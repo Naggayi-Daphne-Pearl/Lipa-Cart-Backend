@@ -1,0 +1,31 @@
+{
+  "collectionName": "components_list_items",
+  "info": {
+    "displayName": "Item",
+    "description": "Shopping list item"
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "quantity": {
+      "type": "decimal",
+      "default": 1
+    },
+    "unit": {
+      "type": "string"
+    },
+    "budget_amount": {
+      "type": "decimal"
+    },
+    "product": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::product.product"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

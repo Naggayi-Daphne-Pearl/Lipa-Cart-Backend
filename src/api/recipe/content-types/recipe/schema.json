@@ -1,0 +1,73 @@
+{
+  "kind": "collectionType",
+  "collectionName": "recipes",
+  "info": {
+    "singularName": "recipe",
+    "pluralName": "recipes",
+    "displayName": "Recipe",
+    "description": "Cooking recipes"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "slug": {
+      "type": "uid",
+      "targetField": "name"
+    },
+    "description": {
+      "type": "richtext"
+    },
+    "image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "author_name": {
+      "type": "string"
+    },
+    "author_image": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "prep_time": {
+      "type": "integer"
+    },
+    "cook_time": {
+      "type": "integer"
+    },
+    "servings": {
+      "type": "integer"
+    },
+    "difficulty": {
+      "type": "enumeration",
+      "enum": ["easy", "medium", "hard"]
+    },
+    "rating": {
+      "type": "decimal"
+    },
+    "review_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "ingredients": {
+      "type": "component",
+      "repeatable": true,
+      "component": "recipe.ingredient"
+    },
+    "instructions": {
+      "type": "component",
+      "repeatable": true,
+      "component": "recipe.instruction"
+    },
+    "tags": {
+      "type": "json"
+    }
+  }
+}

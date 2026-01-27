@@ -17,6 +17,8 @@ Flutter App
 
 - **Strapi** manages read-heavy, admin-curated content
 - **Supabase** handles auth, user-specific data, and realtime features
+  - Project: `cusjbtbacxfpbuwafgzy`
+  - URL: `https://cusjbtbacxfpbuwafgzy.supabase.co`
 
 ## Tech Stack
 
@@ -48,14 +50,19 @@ LC/
 
 ## Current API Content Types
 
-> Starter template types removed (about, article, author, category, global) along with seed data.
+Only catalog/content data lives in Strapi. Transactional/user data (users, orders, payments, ratings, addresses) stays in Supabase.
 
-> Target content types for Lipa-Cart:
-- **Product** — name, slug, description, price, original_price, unit, min/max quantity, availability, featured flag, rating, images, tags, category relation
-- **Category** — name, slug, description, image, color, sort_order, is_active, products relation
-- **Recipe** — name, slug, description, image, author, prep/cook time, servings, difficulty, rating, ingredients (component), instructions (component), tags
-- **Shopper** — name, phone, email, profile_image, is_active, rating
-- **Rider** — name, phone, email, profile_image, vehicle_type, vehicle_plate, is_active, rating
+- **Category** — name, slug, description, image, color, sort_order, is_active; has many Subcategories & Products
+- **Subcategory** — name, slug, description, image, sort_order, is_active; belongs to Category, has many Products
+- **Product** — name, slug, description, estimated_price, common_units (json), image, is_active; belongs to Category & Subcategory
+- **Recipe** — name, slug, description (richtext), image, author_name, author_image, prep_time, cook_time, servings, difficulty (enum), rating, review_count, ingredients (component), instructions (component), tags (json)
+- **Shopping List Template** — name, slug, description, emoji, color, items (component)
+
+### Components
+
+- `recipe.ingredient` — name, quantity, unit, product (relation), notes
+- `recipe.instruction` — step_number, description, duration_minutes
+- `list.item` — name, quantity, unit, budget_amount, product (relation), notes
 
 ## Key Commands
 
@@ -89,13 +96,14 @@ npm run seed:example  # Run seed script
 
 - [x] Strapi project initialized (v5.33.4)
 - [x] Remove starter template content types (about, article, author, global) + seed data
-- [ ] Create Product content type
-- [ ] Create Category content type (adapt existing)
-- [ ] Create Recipe content type
-- [ ] Create Shopper content type
-- [ ] Create Rider content type
+- [x] Create Category content type
+- [x] Create Subcategory content type
+- [x] Create Product content type
+- [x] Create Recipe content type
+- [x] Create Shopping List Template content type
+- [x] Create components (recipe.ingredient, recipe.instruction, list.item)
 - [ ] Configure public API permissions
-- [ ] Add PostgreSQL support for production
+- [x] Add PostgreSQL support for production (Supabase)
 - [ ] Seed database with sample data
 - [ ] Deploy Strapi (Render/Railway)
 

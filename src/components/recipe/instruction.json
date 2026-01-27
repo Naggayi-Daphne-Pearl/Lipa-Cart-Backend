@@ -1,0 +1,20 @@
+{
+  "collectionName": "components_recipe_instructions",
+  "info": {
+    "displayName": "Instruction",
+    "description": "Recipe instruction step"
+  },
+  "attributes": {
+    "step_number": {
+      "type": "integer",
+      "required": true
+    },
+    "description": {
+      "type": "text",
+      "required": true
+    },
+    "duration_minutes": {
+      "type": "integer"
+    }
+  }
+}

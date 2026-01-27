@@ -102,7 +102,7 @@ npm run seed:example  # Run seed script
 - [x] Create Recipe content type
 - [x] Create Shopping List Template content type
 - [x] Create components (recipe.ingredient, recipe.instruction, list.item)
-- [ ] Configure public API permissions
+- [x] Configure public API permissions (via bootstrap)
 - [x] Add PostgreSQL support for production (Supabase)
 - [ ] Seed database with sample data
 - [ ] Deploy Strapi (Render/Railway)

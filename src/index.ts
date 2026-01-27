@@ -1,4 +1,5 @@
 import type { Core } from '@strapi/strapi';
+import seed from '../scripts/seed';
 
 export default {
   register(/* { strapi }: { strapi: Core.Strapi } */) {},
@@ -43,5 +44,8 @@ export default {
         });
       }
     }
+
+    // Seed sample data on first run
+    await seed(strapi);
   },
 };

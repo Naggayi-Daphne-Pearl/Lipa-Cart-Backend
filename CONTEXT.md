@@ -104,7 +104,7 @@ npm run seed:example  # Run seed script
 - [x] Create components (recipe.ingredient, recipe.instruction, list.item)
 - [x] Configure public API permissions (via bootstrap)
 - [x] Add PostgreSQL support for production (Supabase)
-- [ ] Seed database with sample data
+- [x] Seed database with sample data
 - [ ] Deploy Strapi (Render/Railway)
 
 ## Notes

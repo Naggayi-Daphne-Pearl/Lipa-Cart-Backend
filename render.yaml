@@ -2,7 +2,7 @@ services:
   - type: web
     name: lipa-cart-strapi
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
@@ -26,7 +26,3 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
-    disk:
-      name: strapi-uploads
-      mountPath: /opt/render/project/src/public/uploads
-      sizeGB: 1

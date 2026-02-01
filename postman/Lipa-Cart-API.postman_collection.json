@@ -1,0 +1,561 @@
+{
+  "info": {
+    "name": "Lipa Cart API",
+    "description": "Lipa Cart Strapi backend API for managing categories, subcategories, products, recipes, and shopping list templates.\n\nBase URL: https://lipa-cart-strapi-production.up.railway.app\n\n## Authentication\n- GET endpoints for all resources are **public** (no auth required)\n- POST, PUT, DELETE endpoints require a **Bearer token** from Strapi admin\n\n## Common Query Parameters\n- `populate=*` — Include all relations\n- `filters[field][$contains]=value` — Filter results\n- `sort=field:asc` — Sort results\n- `pagination[page]=1&pagination[pageSize]=25` — Paginate\n- `fields[0]=name&fields[1]=slug` — Select specific fields",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://lipa-cart-strapi-production.up.railway.app",
+      "type": "string"
+    },
+    {
+      "key": "bearerToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Categories",
+      "description": "Manage product categories.\n\n**Public access**: GET (find, findOne)\n**Auth required**: POST, PUT, DELETE",
+      "item": [
+        {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"],
+              "query": [
+                { "key": "populate", "value": "*", "description": "Include relations (subcategories, products, image)" },
+                { "key": "pagination[page]", "value": "1", "disabled": true },
+                { "key": "pagination[pageSize]", "value": "25", "disabled": true },
+                { "key": "sort", "value": "sort_order:asc", "disabled": true },
+                { "key": "filters[is_active][$eq]", "value": "true", "disabled": true },
+                { "key": "filters[name][$contains]", "value": "", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "List all categories. Public endpoint — no auth required.\n\n**Fields**: name, slug, description, image, color, sort_order, is_active\n\n**Relations**: subcategories (one-to-many), products (one-to-many)"
+          }
+        },
+        {
+          "name": "Get Category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Category document ID" }
+              ],
+              "query": [
+                { "key": "populate", "value": "*", "description": "Include relations" }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Get a single category by ID. Public endpoint — no auth required."
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Fruits & Vegetables\",\n    \"description\": \"Fresh produce\",\n    \"color\": \"#4CAF50\",\n    \"sort_order\": 1,\n    \"is_active\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories"]
+            },
+            "description": "Create a new category. Requires Bearer token.\n\n**Required fields**: name\n**Optional fields**: description, color, sort_order, is_active (default: true)"
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Updated Category Name\",\n    \"is_active\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Category document ID" }
+              ]
+            },
+            "description": "Update an existing category. Requires Bearer token."
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "categories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Category document ID" }
+              ]
+            },
+            "description": "Delete a category. Requires Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subcategories",
+      "description": "Manage subcategories within categories.\n\n**Public access**: GET (find, findOne)\n**Auth required**: POST, PUT, DELETE",
+      "item": [
+        {
+          "name": "List Subcategories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategories?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategories"],
+              "query": [
+                { "key": "populate", "value": "*", "description": "Include relations (category, products, image)" },
+                { "key": "filters[category][id][$eq]", "value": "1", "disabled": true, "description": "Filter by category ID" },
+                { "key": "filters[is_active][$eq]", "value": "true", "disabled": true },
+                { "key": "sort", "value": "sort_order:asc", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "List all subcategories. Public endpoint.\n\n**Fields**: name, slug, description, image, sort_order, is_active\n\n**Relations**: category (many-to-one), products (one-to-many)"
+          }
+        },
+        {
+          "name": "Get Subcategory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategories/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Subcategory document ID" }
+              ],
+              "query": [
+                { "key": "populate", "value": "*" }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Get a single subcategory by ID. Public endpoint."
+          }
+        },
+        {
+          "name": "Create Subcategory",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Leafy Greens\",\n    \"description\": \"Fresh leafy vegetables\",\n    \"sort_order\": 1,\n    \"is_active\": true,\n    \"category\": 1\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategories"]
+            },
+            "description": "Create a new subcategory. Requires Bearer token.\n\n**Required fields**: name\n**Optional fields**: description, sort_order, is_active, category (ID)"
+          }
+        },
+        {
+          "name": "Update Subcategory",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Updated Subcategory\",\n    \"category\": 2\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategories/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Update a subcategory. Requires Bearer token."
+          }
+        },
+        {
+          "name": "Delete Subcategory",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/subcategories/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "subcategories", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Delete a subcategory. Requires Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "description": "Manage products. Currency is UGX.\n\n**Public access**: GET (find, findOne)\n**Auth required**: POST, PUT, DELETE",
+      "item": [
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"],
+              "query": [
+                { "key": "populate", "value": "*", "description": "Include relations (category, subcategory, image)" },
+                { "key": "filters[category][id][$eq]", "value": "1", "disabled": true, "description": "Filter by category" },
+                { "key": "filters[subcategory][id][$eq]", "value": "1", "disabled": true, "description": "Filter by subcategory" },
+                { "key": "filters[is_active][$eq]", "value": "true", "disabled": true },
+                { "key": "filters[name][$contains]", "value": "", "disabled": true, "description": "Search by name" },
+                { "key": "sort", "value": "name:asc", "disabled": true },
+                { "key": "pagination[page]", "value": "1", "disabled": true },
+                { "key": "pagination[pageSize]", "value": "25", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "List all products. Public endpoint.\n\n**Fields**: name, slug, description, estimated_price (UGX), common_units (JSON), image, is_active\n\n**Relations**: category (many-to-one), subcategory (many-to-one)"
+          }
+        },
+        {
+          "name": "Get Product",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ],
+              "query": [
+                { "key": "populate", "value": "*" }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Get a single product by ID. Public endpoint."
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Tomatoes\",\n    \"description\": \"Fresh red tomatoes\",\n    \"estimated_price\": 3000,\n    \"common_units\": [\"kg\", \"bunch\", \"piece\"],\n    \"is_active\": true,\n    \"category\": 1,\n    \"subcategory\": 1\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"]
+            },
+            "description": "Create a new product. Requires Bearer token.\n\n**Required fields**: name, estimated_price\n**Optional fields**: description, common_units (JSON array), is_active, category (ID), subcategory (ID)"
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"estimated_price\": 3500,\n    \"is_active\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/products/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Update a product. Requires Bearer token."
+          }
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Delete a product. Requires Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Recipes",
+      "description": "Manage recipes with ingredients and step-by-step instructions.\n\n**Public access**: GET (find, findOne)\n**Auth required**: POST, PUT, DELETE",
+      "item": [
+        {
+          "name": "List Recipes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recipes?populate[ingredients][populate]=product&populate[instructions]=*&populate[image]=*&populate[author_image]=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recipes"],
+              "query": [
+                { "key": "populate[ingredients][populate]", "value": "product", "description": "Include ingredients with linked products" },
+                { "key": "populate[instructions]", "value": "*", "description": "Include cooking instructions" },
+                { "key": "populate[image]", "value": "*" },
+                { "key": "populate[author_image]", "value": "*" },
+                { "key": "filters[difficulty][$eq]", "value": "easy", "disabled": true, "description": "Filter by difficulty: easy, medium, hard" },
+                { "key": "filters[name][$contains]", "value": "", "disabled": true },
+                { "key": "sort", "value": "rating:desc", "disabled": true },
+                { "key": "pagination[page]", "value": "1", "disabled": true },
+                { "key": "pagination[pageSize]", "value": "25", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "List all recipes with deep population. Public endpoint.\n\n**Fields**: name, slug, description (richtext), image, author_name, author_image, prep_time, cook_time, servings, difficulty (easy/medium/hard), rating, review_count, tags (JSON)\n\n**Components**: ingredients (repeatable), instructions (repeatable)"
+          }
+        },
+        {
+          "name": "Get Recipe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recipes/:id?populate[ingredients][populate]=product&populate[instructions]=*&populate[image]=*&populate[author_image]=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recipes", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ],
+              "query": [
+                { "key": "populate[ingredients][populate]", "value": "product" },
+                { "key": "populate[instructions]", "value": "*" },
+                { "key": "populate[image]", "value": "*" },
+                { "key": "populate[author_image]", "value": "*" }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Get a single recipe with all nested data. Public endpoint."
+          }
+        },
+        {
+          "name": "Create Recipe",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Rolex (Chapati Egg Roll)\",\n    \"description\": \"A popular Ugandan street food\",\n    \"author_name\": \"Chef Amina\",\n    \"prep_time\": 10,\n    \"cook_time\": 15,\n    \"servings\": 2,\n    \"difficulty\": \"easy\",\n    \"rating\": 4.5,\n    \"review_count\": 0,\n    \"tags\": [\"street food\", \"breakfast\", \"quick\"],\n    \"ingredients\": [\n      {\n        \"name\": \"Eggs\",\n        \"quantity\": 2,\n        \"unit\": \"pieces\",\n        \"notes\": \"beaten\"\n      },\n      {\n        \"name\": \"Chapati\",\n        \"quantity\": 2,\n        \"unit\": \"pieces\"\n      },\n      {\n        \"name\": \"Tomatoes\",\n        \"quantity\": 1,\n        \"unit\": \"piece\",\n        \"notes\": \"diced\"\n      }\n    ],\n    \"instructions\": [\n      {\n        \"step_number\": 1,\n        \"description\": \"Beat eggs and add diced tomatoes and onions\",\n        \"duration_minutes\": 3\n      },\n      {\n        \"step_number\": 2,\n        \"description\": \"Fry the egg mixture in a pan\",\n        \"duration_minutes\": 5\n      },\n      {\n        \"step_number\": 3,\n        \"description\": \"Place chapati on top of the egg and flip\",\n        \"duration_minutes\": 2\n      },\n      {\n        \"step_number\": 4,\n        \"description\": \"Roll the chapati around the egg and serve\",\n        \"duration_minutes\": 1\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/recipes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recipes"]
+            },
+            "description": "Create a new recipe with ingredients and instructions. Requires Bearer token.\n\n**Required fields**: name\n**Optional fields**: description, author_name, prep_time, cook_time, servings, difficulty, rating, review_count, tags, ingredients[], instructions[]\n\n**Ingredient fields**: name (required), quantity, unit, product (ID), notes\n**Instruction fields**: step_number (required), description (required), duration_minutes"
+          }
+        },
+        {
+          "name": "Update Recipe",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"rating\": 4.8,\n    \"review_count\": 12,\n    \"difficulty\": \"medium\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/recipes/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recipes", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Update a recipe. Requires Bearer token."
+          }
+        },
+        {
+          "name": "Delete Recipe",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/recipes/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "recipes", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Delete a recipe. Requires Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shopping Lists",
+      "description": "Manage shopping list templates with items linked to products.\n\n**Public access**: GET (find, findOne)\n**Auth required**: POST, PUT, DELETE",
+      "item": [
+        {
+          "name": "List Shopping Lists",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/shopping-lists?populate[items][populate]=product",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shopping-lists"],
+              "query": [
+                { "key": "populate[items][populate]", "value": "product", "description": "Include items with linked products" },
+                { "key": "filters[name][$contains]", "value": "", "disabled": true },
+                { "key": "sort", "value": "name:asc", "disabled": true },
+                { "key": "pagination[page]", "value": "1", "disabled": true },
+                { "key": "pagination[pageSize]", "value": "25", "disabled": true }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "List all shopping list templates. Public endpoint.\n\n**Fields**: name, slug, description, emoji, color\n\n**Components**: items (repeatable) — each with name, quantity, unit, budget_amount, product, notes"
+          }
+        },
+        {
+          "name": "Get Shopping List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/shopping-lists/:id?populate[items][populate]=product",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ],
+              "query": [
+                { "key": "populate[items][populate]", "value": "product" }
+              ]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Get a single shopping list template. Public endpoint."
+          }
+        },
+        {
+          "name": "Create Shopping List",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Weekly Groceries\",\n    \"description\": \"Standard weekly grocery shopping list\",\n    \"emoji\": \"🛒\",\n    \"color\": \"#2196F3\",\n    \"items\": [\n      {\n        \"name\": \"Tomatoes\",\n        \"quantity\": 2,\n        \"unit\": \"kg\",\n        \"budget_amount\": 6000,\n        \"notes\": \"Ripe ones\"\n      },\n      {\n        \"name\": \"Rice\",\n        \"quantity\": 5,\n        \"unit\": \"kg\",\n        \"budget_amount\": 25000\n      },\n      {\n        \"name\": \"Cooking Oil\",\n        \"quantity\": 1,\n        \"unit\": \"litre\",\n        \"budget_amount\": 12000\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shopping-lists",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shopping-lists"]
+            },
+            "description": "Create a shopping list template. Requires Bearer token.\n\n**Required fields**: name\n**Optional fields**: description, emoji, color, items[]\n\n**Item fields**: name (required), quantity (default: 1), unit, budget_amount, product (ID), notes"
+          }
+        },
+        {
+          "name": "Update Shopping List",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Updated Weekly List\",\n    \"color\": \"#FF9800\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shopping-lists/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Update a shopping list template. Requires Bearer token."
+          }
+        },
+        {
+          "name": "Delete Shopping List",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/shopping-lists/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [
+                { "key": "id", "value": "1" }
+              ]
+            },
+            "description": "Delete a shopping list template. Requires Bearer token."
+          }
+        }
+      ]
+    }
+  ]
+}

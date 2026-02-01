@@ -473,20 +473,24 @@ const shoppingLists = [
 async function seed(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
 
-  // Check if data already exists
-  const existingCategories = await strapi.documents('api::category.category').findMany();
+  // Check if data already exists and is complete
+  const existingCategories = await strapi.documents('api::category.category').findMany({ limit: 100 });
+  const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({ limit: 100 });
+  const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
+
+  const isComplete =
+    existingCategories.length >= categories.length &&
+    existingRecipes.length >= recipes.length &&
+    existingProducts.length >= products.length;
+
+  if (isComplete) {
+    console.log(`⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes), skipping.`);
+    return;
+  }
+
+  // Incomplete or outdated — clear everything and re-seed
   if (existingCategories.length > 0) {
-    // Check if data is from the updated seed (products should have descriptions)
-    const sampleProducts = await strapi.documents('api::product.product').findMany({ limit: 1 });
-    const isUpToDate = sampleProducts.length > 0 && sampleProducts[0].description;
-
-    if (isUpToDate) {
-      console.log('⏭️  Seed data is up to date, skipping.');
-      return;
-    }
-
-    // Old seed data detected — clear everything and re-seed
-    console.log('🔄 Outdated seed data detected (missing descriptions/images) — clearing...');
+    console.log(`🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes) — clearing...`);
     const contentTypes = [
       'api::recipe.recipe',
       'api::shopping-list.shopping-list',
@@ -501,8 +505,7 @@ async function seed(strapi: Core.Strapi) {
         try {
           await strapi.documents(uid).delete({ documentId: item.documentId });
         } catch (e) {
-          console.log(`  ⚠️  Failed to delete ${uid} ${item.documentId}, trying db query...`);
-          await strapi.db.query(uid).delete({ where: { documentId: item.documentId } });
+          console.log(`  ⚠️  Failed to delete ${uid} ${item.documentId}`);
         }
       }
       console.log(`  🗑️  Cleared ${uid} (${items.length} items)`);
@@ -510,7 +513,13 @@ async function seed(strapi: Core.Strapi) {
     console.log('🗑️  Old data cleared.');
   }
 
-  // Seed categories (with images)
+  // ── Phase 1: Create all entities (fast, no image downloads) ──
+  console.log('🌱 Phase 1: Creating entities...');
+
+  // Track documentIds for background image upload
+  const imageQueue: { uid: string; documentId: string; imageUrl: string; name: string }[] = [];
+
+  // Seed categories
   const categoryMap: Record<string, string> = {};
   for (const cat of categories) {
     const { imageUrl, ...data } = cat;
@@ -519,16 +528,8 @@ async function seed(strapi: Core.Strapi) {
       status: 'published',
     });
     categoryMap[cat.slug] = created.documentId;
-
-    const image = await uploadImage(strapi, imageUrl, cat.slug);
-    if (image) {
-      await strapi.documents('api::category.category').update({
-        documentId: created.documentId,
-        data: { image: image.id },
-        status: 'published',
-      });
-    }
-    console.log(`  ✅ Category: ${cat.name}${image ? ' (with image)' : ' (no image)'}`);
+    imageQueue.push({ uid: 'api::category.category', documentId: created.documentId, imageUrl, name: cat.slug });
+    console.log(`  ✅ Category: ${cat.name}`);
   }
 
   // Seed subcategories
@@ -547,7 +548,7 @@ async function seed(strapi: Core.Strapi) {
     console.log(`  ✅ Subcategory: ${sub.name}`);
   }
 
-  // Seed products (with images and descriptions)
+  // Seed products
   for (const prod of products) {
     const { categorySlug, subcategorySlug, imageUrl, ...data } = prod;
     const created = await strapi.documents('api::product.product').create({
@@ -559,34 +560,18 @@ async function seed(strapi: Core.Strapi) {
       } as any,
       status: 'published',
     });
-
-    const image = await uploadImage(strapi, imageUrl, prod.slug);
-    if (image) {
-      await strapi.documents('api::product.product').update({
-        documentId: created.documentId,
-        data: { image: image.id },
-        status: 'published',
-      });
-    }
-    console.log(`  ✅ Product: ${prod.name}${image ? ' (with image)' : ' (no image)'}`);
+    imageQueue.push({ uid: 'api::product.product', documentId: created.documentId, imageUrl, name: prod.slug });
+    console.log(`  ✅ Product: ${prod.name}`);
   }
 
-  // Seed recipes (with images)
+  // Seed recipes
   for (const recipe of recipes) {
     const { imageUrl, ...data } = recipe;
     const created = await strapi.documents('api::recipe.recipe').create({
       data: data as any,
       status: 'published',
     });
-
-    const image = await uploadImage(strapi, imageUrl, recipe.slug);
-    if (image) {
-      await strapi.documents('api::recipe.recipe').update({
-        documentId: created.documentId,
-        data: { image: image.id },
-        status: 'published',
-      });
-    }
+    imageQueue.push({ uid: 'api::recipe.recipe', documentId: created.documentId, imageUrl, name: recipe.slug });
     console.log(`  ✅ Recipe: ${recipe.name}`);
   }
 
@@ -599,7 +584,37 @@ async function seed(strapi: Core.Strapi) {
     console.log(`  ✅ Shopping List: ${list.name}`);
   }
 
-  console.log('🌱 Seeding complete!');
+  console.log(`🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for background upload.`);
+
+  // ── Phase 2: Upload images in background (don't block server startup) ──
+  setTimeout(async () => {
+    console.log(`🖼️  Starting background image uploads (${imageQueue.length} images)...`);
+    let success = 0;
+    let failed = 0;
+
+    for (const item of imageQueue) {
+      try {
+        const image = await uploadImage(strapi, item.imageUrl, item.name);
+        if (image) {
+          await strapi.documents(item.uid as any).update({
+            documentId: item.documentId,
+            data: { image: image.id },
+            status: 'published',
+          });
+          success++;
+          console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ✅`);
+        } else {
+          failed++;
+          console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ⚠️ download failed`);
+        }
+      } catch (e) {
+        failed++;
+        console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ❌ ${e}`);
+      }
+    }
+
+    console.log(`🖼️  Image uploads complete: ${success} succeeded, ${failed} failed.`);
+  }, 5000); // Wait 5s for server to fully start before uploading images
 }
 
 export default seed;

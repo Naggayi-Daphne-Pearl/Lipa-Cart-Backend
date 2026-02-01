@@ -45,9 +45,6 @@ export default {
       }
     }
 
-    // Only seed in development — production seed is too slow for Render's startup timeout
-    if (process.env.NODE_ENV !== 'production') {
-      await seed(strapi);
-    }
+    await seed(strapi);
   },
 };

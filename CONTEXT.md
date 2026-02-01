@@ -105,7 +105,7 @@ npm run seed:example  # Run seed script
 - [x] Configure public API permissions (via bootstrap)
 - [x] Add PostgreSQL support for production (Supabase)
 - [x] Seed database with sample data
-- [ ] Deploy Strapi (Render/Railway)
+- [ ] Deploy Strapi (Render — `render.yaml` configured)
 
 ## Notes
 

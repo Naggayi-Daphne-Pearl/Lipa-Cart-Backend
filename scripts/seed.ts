@@ -471,28 +471,43 @@ const shoppingLists = [
 
 // ── Main seed function ──
 async function seed(strapi: Core.Strapi) {
-  console.log('🌱 Seeding database...');
+  console.log('🌱 Checking seed status...');
 
   // Check if data already exists
   const existingCategories = await strapi.documents('api::category.category').findMany();
   if (existingCategories.length > 0) {
-    if (process.env.FORCE_SEED === 'true') {
-      console.log('🗑️  FORCE_SEED=true — clearing existing data before re-seeding...');
-      // Delete in reverse dependency order
-      const existingRecipes = await strapi.documents('api::recipe.recipe').findMany();
-      for (const r of existingRecipes) await strapi.documents('api::recipe.recipe').delete({ documentId: r.documentId });
-      const existingLists = await strapi.documents('api::shopping-list.shopping-list').findMany();
-      for (const l of existingLists) await strapi.documents('api::shopping-list.shopping-list').delete({ documentId: l.documentId });
-      const existingProducts = await strapi.documents('api::product.product').findMany();
-      for (const p of existingProducts) await strapi.documents('api::product.product').delete({ documentId: p.documentId });
-      const existingSubs = await strapi.documents('api::subcategory.subcategory').findMany();
-      for (const s of existingSubs) await strapi.documents('api::subcategory.subcategory').delete({ documentId: s.documentId });
-      for (const c of existingCategories) await strapi.documents('api::category.category').delete({ documentId: c.documentId });
-      console.log('🗑️  Existing data cleared.');
-    } else {
-      console.log('⏭️  Data already exists, skipping seed. Set FORCE_SEED=true to re-seed.');
+    // Check if data is from the updated seed (products should have descriptions)
+    const sampleProducts = await strapi.documents('api::product.product').findMany({ limit: 1 });
+    const isUpToDate = sampleProducts.length > 0 && sampleProducts[0].description;
+
+    if (isUpToDate) {
+      console.log('⏭️  Seed data is up to date, skipping.');
       return;
     }
+
+    // Old seed data detected — clear everything and re-seed
+    console.log('🔄 Outdated seed data detected (missing descriptions/images) — clearing...');
+    const contentTypes = [
+      'api::recipe.recipe',
+      'api::shopping-list.shopping-list',
+      'api::product.product',
+      'api::subcategory.subcategory',
+      'api::category.category',
+    ] as const;
+
+    for (const uid of contentTypes) {
+      const items = await strapi.documents(uid).findMany({ limit: 1000 });
+      for (const item of items) {
+        try {
+          await strapi.documents(uid).delete({ documentId: item.documentId });
+        } catch (e) {
+          console.log(`  ⚠️  Failed to delete ${uid} ${item.documentId}, trying db query...`);
+          await strapi.db.query(uid).delete({ where: { documentId: item.documentId } });
+        }
+      }
+      console.log(`  🗑️  Cleared ${uid} (${items.length} items)`);
+    }
+    console.log('🗑️  Old data cleared.');
   }
 
   // Seed categories (with images)
@@ -507,12 +522,13 @@ async function seed(strapi: Core.Strapi) {
 
     const image = await uploadImage(strapi, imageUrl, cat.slug);
     if (image) {
-      await strapi.db.query('api::category.category').update({
-        where: { documentId: created.documentId },
+      await strapi.documents('api::category.category').update({
+        documentId: created.documentId,
         data: { image: image.id },
+        status: 'published',
       });
     }
-    console.log(`  ✅ Category: ${cat.name}`);
+    console.log(`  ✅ Category: ${cat.name}${image ? ' (with image)' : ' (no image)'}`);
   }
 
   // Seed subcategories
@@ -546,12 +562,13 @@ async function seed(strapi: Core.Strapi) {
 
     const image = await uploadImage(strapi, imageUrl, prod.slug);
     if (image) {
-      await strapi.db.query('api::product.product').update({
-        where: { documentId: created.documentId },
+      await strapi.documents('api::product.product').update({
+        documentId: created.documentId,
         data: { image: image.id },
+        status: 'published',
       });
     }
-    console.log(`  ✅ Product: ${prod.name}`);
+    console.log(`  ✅ Product: ${prod.name}${image ? ' (with image)' : ' (no image)'}`);
   }
 
   // Seed recipes (with images)
@@ -564,9 +581,10 @@ async function seed(strapi: Core.Strapi) {
 
     const image = await uploadImage(strapi, imageUrl, recipe.slug);
     if (image) {
-      await strapi.db.query('api::recipe.recipe').update({
-        where: { documentId: created.documentId },
+      await strapi.documents('api::recipe.recipe').update({
+        documentId: created.documentId,
         data: { image: image.id },
+        status: 'published',
       });
     }
     console.log(`  ✅ Recipe: ${recipe.name}`);

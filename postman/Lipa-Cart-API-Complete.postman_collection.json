@@ -1,0 +1,698 @@
+{
+  "info": {
+    "name": "Lipa Cart API - Complete",
+    "description": "Complete Lipa Cart Strapi backend API with all endpoints.\n\n**Base URLs:**\n- Production: https://lipa-cart-strapi-production.up.railway.app\n- Local Dev: http://localhost:1337\n\n## Authentication\n- Most GET endpoints are **public** (no auth required)\n- POST, PUT, DELETE require **JWT Bearer token**\n\n## Roles & Permissions\n- **Customer**: Browse catalog, manage own orders/addresses\n- **Shopper**: Update assigned orders, manage items\n- **Rider**: Manage deliveries\n- **Admin**: Full access\n\n## Query Parameters\n- `populate=*` — Include all relations\n- `filters[field][$eq]=value` — Exact match\n- `filters[field][$contains]=value` — Contains text\n- `sort=field:asc` or `field:desc` — Sort\n- `pagination[page]=1&pagination[pageSize]=25` — Paginate",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:1337",
+      "type": "string"
+    },
+    {
+      "key": "productionUrl",
+      "value": "https://lipa-cart-strapi-production.up.railway.app",
+      "type": "string"
+    },
+    {
+      "key": "bearerToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "User authentication and registration endpoints",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/local",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "local"]
+            },
+            "description": "Login with email/username and password. Returns JWT token.\n\n**Response**: { jwt, user: { id, username, email, role } }"
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/local/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "local", "register"]
+            },
+            "description": "Register a new user. Returns JWT token."
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "Get currently authenticated user details. Requires bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "description": "Custom user profiles with phone, name, and user type",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[user_type][$eq]", "value": "customer", "disabled": true},
+                {"key": "filters[phone][$contains]", "value": "", "disabled": true}
+              ]
+            },
+            "description": "List user profiles.\n\n**Fields**: phone, email, name, profile_photo, user_type, is_active\n**Relations**: customer, shopper, rider, admin"
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get a single user profile by ID."
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"phone\": \"+256700000001\",\n    \"email\": \"customer@example.com\",\n    \"name\": \"John Doe\",\n    \"user_type\": \"customer\",\n    \"is_active\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"]
+            },
+            "description": "Create a new user profile.\n\n**user_type**: customer, shopper, rider, admin"
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"name\": \"Jane Doe Updated\",\n    \"email\": \"newemail@example.com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Update a user profile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "description": "Customer-specific profile data and referrals",
+      "item": [
+        {
+          "name": "List Customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "customers"],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "List all customers.\n\n**Fields**: user, default_address, referral_code, referred_by, total_orders"
+          }
+        },
+        {
+          "name": "Get Customer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "customers", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get customer by ID with user details."
+          }
+        },
+        {
+          "name": "Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"user\": 1,\n    \"referral_code\": \"JOHN2024\",\n    \"referred_by\": null,\n    \"total_orders\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/customers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "customers"]
+            },
+            "description": "Create customer profile linked to user."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shoppers",
+      "description": "Personal shopper profiles with market location and verification",
+      "item": [
+        {
+          "name": "List Shoppers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/shoppers?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shoppers"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[is_verified][$eq]", "value": "true", "disabled": true},
+                {"key": "filters[is_online][$eq]", "value": "true", "disabled": true}
+              ]
+            },
+            "description": "List all shoppers.\n\n**Fields**: user, market_location, is_verified, is_online, rating, total_orders_completed, total_earnings"
+          }
+        },
+        {
+          "name": "Get Shopper",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/shoppers/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shoppers", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get shopper by ID."
+          }
+        },
+        {
+          "name": "Create Shopper",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"user\": 2,\n    \"market_location\": \"Nakasero Market\",\n    \"is_verified\": false,\n    \"is_online\": true,\n    \"rating\": 0,\n    \"total_orders_completed\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shoppers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shoppers"]
+            },
+            "description": "Create shopper profile."
+          }
+        },
+        {
+          "name": "Update Shopper Status",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"is_online\": true,\n    \"is_verified\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shoppers/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shoppers", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Update shopper online status or verification."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Riders",
+      "description": "Delivery rider profiles with vehicle and verification info",
+      "item": [
+        {
+          "name": "List Riders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/riders?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "riders"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[is_verified][$eq]", "value": "true", "disabled": true},
+                {"key": "filters[is_online][$eq]", "value": "true", "disabled": true}
+              ]
+            },
+            "description": "List all riders.\n\n**Fields**: user, vehicle_type, vehicle_plate, is_verified, is_online, rating, total_deliveries_completed"
+          }
+        },
+        {
+          "name": "Get Rider",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/riders/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "riders", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get rider by ID."
+          }
+        },
+        {
+          "name": "Create Rider",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"user\": 3,\n    \"vehicle_type\": \"Motorcycle\",\n    \"vehicle_plate\": \"UBB123A\",\n    \"is_verified\": false,\n    \"is_online\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/riders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "riders"]
+            },
+            "description": "Create rider profile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Users",
+      "description": "App administrators with operational privileges",
+      "item": [
+        {
+          "name": "List Admins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin-users?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin-users"],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "List all admin users.\n\n**Fields**: user, role, permissions, department, employee_id, is_active"
+          }
+        },
+        {
+          "name": "Get Admin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin-users/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin-users", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get admin user by ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Addresses",
+      "description": "Customer delivery addresses",
+      "item": [
+        {
+          "name": "List Addresses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/addresses?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "addresses"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[customer][id][$eq]", "value": "1", "disabled": true}
+              ]
+            },
+            "description": "List addresses.\n\n**Fields**: customer, label, address_line, city, landmark, delivery_instructions, is_default"
+          }
+        },
+        {
+          "name": "Get Address",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/addresses/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "addresses", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get address by ID."
+          }
+        },
+        {
+          "name": "Create Address",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"customer\": 1,\n    \"label\": \"Home\",\n    \"address_line\": \"123 Kampala Road\",\n    \"city\": \"Kampala\",\n    \"landmark\": \"Near Total Petrol Station\",\n    \"delivery_instructions\": \"Call when you arrive\",\n    \"is_default\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/addresses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "addresses"]
+            },
+            "description": "Create a delivery address."
+          }
+        },
+        {
+          "name": "Update Address",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"delivery_instructions\": \"Ring the doorbell\",\n    \"is_default\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/addresses/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "addresses", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Update address."
+          }
+        },
+        {
+          "name": "Delete Address",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/addresses/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "addresses", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Delete an address."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "description": "Order management with status tracking",
+      "item": [
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[customer][id][$eq]", "value": "1", "disabled": true},
+                {"key": "filters[status][$eq]", "value": "pending", "disabled": true},
+                {"key": "sort", "value": "createdAt:desc", "disabled": true}
+              ]
+            },
+            "description": "List orders.\n\n**Fields**: customer, shopper, rider, delivery_address, status, subtotal, delivery_fee, total\n**Status**: pending, payment_confirmed, shopping, ready_for_pickup, in_transit, delivered, cancelled"
+          }
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/:id?populate[order_items][populate]=*&populate[customer]=*&populate[shopper]=*&populate[rider]=*&populate[delivery_address]=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [
+                {"key": "populate[order_items][populate]", "value": "*"},
+                {"key": "populate[customer]", "value": "*"},
+                {"key": "populate[shopper]", "value": "*"},
+                {"key": "populate[rider]", "value": "*"},
+                {"key": "populate[delivery_address]", "value": "*"}
+              ]
+            },
+            "description": "Get order with all nested data."
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"customer\": 1,\n    \"delivery_address\": 1,\n    \"subtotal\": 50000,\n    \"service_fee\": 2500,\n    \"delivery_fee\": 5000,\n    \"total\": 57500,\n    \"status\": \"pending\",\n    \"special_instructions\": \"Please call before delivery\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            },
+            "description": "Create a new order."
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"status\": \"payment_confirmed\",\n    \"shopper\": 1\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Update order status and assign shopper/rider."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Order Items",
+      "description": "Individual items within orders",
+      "item": [
+        {
+          "name": "List Order Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/order-items?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "order-items"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[order][id][$eq]", "value": "1", "disabled": true}
+              ]
+            },
+            "description": "List order items.\n\n**Fields**: order, product, product_name, quantity, unit, estimated_price, actual_price, found"
+          }
+        },
+        {
+          "name": "Get Order Item",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/order-items/:id?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "order-items", ":id"],
+              "variable": [{"key": "id", "value": "1"}],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "Get order item by ID."
+          }
+        },
+        {
+          "name": "Create Order Item",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"order\": 1,\n    \"product\": 1,\n    \"product_name\": \"Tomatoes\",\n    \"quantity\": 2,\n    \"unit\": \"kg\",\n    \"estimated_price\": 6000\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/order-items",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "order-items"]
+            },
+            "description": "Add item to order."
+          }
+        },
+        {
+          "name": "Update Order Item (Shopper)",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"found\": true,\n    \"actual_price\": 6500\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/order-items/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "order-items", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            },
+            "description": "Shopper updates item status and actual price."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "description": "Payment transaction records",
+      "item": [
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments"],
+              "query": [
+                {"key": "populate", "value": "*"},
+                {"key": "filters[order][id][$eq]", "value": "1", "disabled": true}
+              ]
+            },
+            "description": "List payments.\n\n**Fields**: order, method, amount, status, transaction_id"
+          }
+        },
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"order\": 1,\n    \"method\": \"mobile_money\",\n    \"provider\": \"MTN\",\n    \"amount\": 57500,\n    \"phone_number\": \"+256700000001\",\n    \"status\": \"pending\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payments"]
+            },
+            "description": "Record a payment transaction."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ratings",
+      "description": "Order ratings and reviews",
+      "item": [
+        {
+          "name": "List Ratings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ratings?populate=*",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ratings"],
+              "query": [{"key": "populate", "value": "*"}]
+            },
+            "description": "List all ratings.\n\n**Fields**: order, customer, overall_rating, shopper_rating, rider_rating, comment"
+          }
+        },
+        {
+          "name": "Create Rating",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"order\": 1,\n    \"customer\": 1,\n    \"overall_rating\": 5,\n    \"shopper_rating\": 5,\n    \"rider_rating\": 4,\n    \"comment\": \"Excellent service!\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ratings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ratings"]
+            },
+            "description": "Create a rating for a completed order."
+          }
+        }
+      ]
+    }
+  ]
+}

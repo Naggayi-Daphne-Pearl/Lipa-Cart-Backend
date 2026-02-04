@@ -1,0 +1,68 @@
+{
+  "kind": "collectionType",
+  "collectionName": "order_items",
+  "info": {
+    "singularName": "order-item",
+    "pluralName": "order-items",
+    "displayName": "Order Item",
+    "description": "Items in each order"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::order.order",
+      "inversedBy": "order_items"
+    },
+    "product": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::product.product"
+    },
+    "product_name": {
+      "type": "string",
+      "required": true
+    },
+    "quantity": {
+      "type": "decimal",
+      "required": true
+    },
+    "unit": {
+      "type": "string",
+      "required": true
+    },
+    "estimated_price": {
+      "type": "decimal"
+    },
+    "actual_price": {
+      "type": "decimal"
+    },
+    "found": {
+      "type": "boolean"
+    },
+    "special_instructions": {
+      "type": "text"
+    },
+    "is_substituted": {
+      "type": "boolean",
+      "default": false
+    },
+    "substitute_for_item": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::order-item.order-item"
+    },
+    "substitution_approved": {
+      "type": "boolean"
+    },
+    "substitution_photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    }
+  }
+}

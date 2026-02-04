@@ -1,0 +1,83 @@
+{
+  "kind": "collectionType",
+  "collectionName": "users_custom",
+  "info": {
+    "singularName": "user",
+    "pluralName": "users",
+    "displayName": "User",
+    "description": "Base user table for all user types"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "phone": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "email": {
+      "type": "email"
+    },
+    "name": {
+      "type": "string"
+    },
+    "profile_photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "user_type": {
+      "type": "enumeration",
+      "enum": ["customer", "shopper", "rider", "admin"],
+      "required": true
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "customer": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::customer.customer",
+      "mappedBy": "user"
+    },
+    "shopper": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::shopper.shopper",
+      "mappedBy": "user"
+    },
+    "rider": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::rider.rider",
+      "mappedBy": "user"
+    },
+    "admin": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::admin-user.admin-user",
+      "mappedBy": "user"
+    },
+    "orders_as_customer": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order.order",
+      "mappedBy": "customer"
+    },
+    "orders_as_shopper": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order.order",
+      "mappedBy": "shopper"
+    },
+    "orders_as_rider": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order.order",
+      "mappedBy": "rider"
+    }
+  }
+}

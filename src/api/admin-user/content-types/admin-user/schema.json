@@ -1,0 +1,47 @@
+{
+  "kind": "collectionType",
+  "collectionName": "admins",
+  "info": {
+    "singularName": "admin-user",
+    "pluralName": "admin-users",
+    "displayName": "Admin User",
+    "description": "App administrators with elevated privileges"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::user.user",
+      "inversedBy": "admin"
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": ["super_admin", "admin", "support", "operations"],
+      "default": "admin",
+      "required": true
+    },
+    "permissions": {
+      "type": "json",
+      "description": "Array of specific permissions"
+    },
+    "department": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "employee_id": {
+      "type": "string",
+      "maxLength": 50
+    },
+    "last_login_at": {
+      "type": "datetime"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

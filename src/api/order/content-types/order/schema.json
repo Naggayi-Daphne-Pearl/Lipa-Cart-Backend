@@ -1,0 +1,134 @@
+{
+  "kind": "collectionType",
+  "collectionName": "orders",
+  "info": {
+    "singularName": "order",
+    "pluralName": "orders",
+    "displayName": "Order",
+    "description": "Main orders table"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order_number": {
+      "type": "string",
+      "unique": true,
+      "required": true
+    },
+    "customer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user",
+      "inversedBy": "orders_as_customer"
+    },
+    "shopper": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user",
+      "inversedBy": "orders_as_shopper"
+    },
+    "rider": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user",
+      "inversedBy": "orders_as_rider"
+    },
+    "delivery_address": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::address.address",
+      "inversedBy": "orders"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "pending",
+        "payment_processing",
+        "payment_confirmed",
+        "shopper_assigned",
+        "shopping",
+        "ready_for_pickup",
+        "rider_assigned",
+        "in_transit",
+        "delivered",
+        "cancelled",
+        "refunded"
+      ],
+      "default": "pending",
+      "required": true
+    },
+    "subtotal": {
+      "type": "decimal",
+      "required": true
+    },
+    "service_fee": {
+      "type": "decimal",
+      "required": true
+    },
+    "delivery_fee": {
+      "type": "decimal",
+      "required": true
+    },
+    "discount": {
+      "type": "decimal",
+      "default": 0
+    },
+    "total": {
+      "type": "decimal",
+      "required": true
+    },
+    "estimated_total": {
+      "type": "decimal"
+    },
+    "special_instructions": {
+      "type": "text"
+    },
+    "cancellation_reason": {
+      "type": "text"
+    },
+    "payment_confirmed_at": {
+      "type": "datetime"
+    },
+    "shopper_assigned_at": {
+      "type": "datetime"
+    },
+    "shopping_started_at": {
+      "type": "datetime"
+    },
+    "shopping_completed_at": {
+      "type": "datetime"
+    },
+    "rider_assigned_at": {
+      "type": "datetime"
+    },
+    "picked_up_at": {
+      "type": "datetime"
+    },
+    "delivered_at": {
+      "type": "datetime"
+    },
+    "cancelled_at": {
+      "type": "datetime"
+    },
+    "order_items": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order-item.order-item",
+      "mappedBy": "order"
+    },
+    "payments": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::payment.payment",
+      "mappedBy": "order"
+    },
+    "rating": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::rating.rating",
+      "mappedBy": "order"
+    }
+  }
+}

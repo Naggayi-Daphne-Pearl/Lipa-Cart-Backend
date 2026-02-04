@@ -1,0 +1,72 @@
+{
+  "kind": "collectionType",
+  "collectionName": "shoppers",
+  "info": {
+    "singularName": "shopper",
+    "pluralName": "shoppers",
+    "displayName": "Shopper",
+    "description": "Personal shoppers who fulfill orders"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::user.user",
+      "inversedBy": "shopper"
+    },
+    "market_location": {
+      "type": "string"
+    },
+    "market_gps_lat": {
+      "type": "decimal"
+    },
+    "market_gps_lng": {
+      "type": "decimal"
+    },
+    "id_number": {
+      "type": "string"
+    },
+    "id_photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_online": {
+      "type": "boolean",
+      "default": false
+    },
+    "rating": {
+      "type": "decimal",
+      "default": 0
+    },
+    "total_ratings": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_orders_completed": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_earnings": {
+      "type": "decimal",
+      "default": 0
+    },
+    "bank_account_name": {
+      "type": "string"
+    },
+    "bank_account_number": {
+      "type": "string"
+    },
+    "bank_name": {
+      "type": "string"
+    }
+  }
+}

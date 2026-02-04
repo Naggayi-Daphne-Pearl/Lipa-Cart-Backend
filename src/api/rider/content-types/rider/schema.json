@@ -1,0 +1,78 @@
+{
+  "kind": "collectionType",
+  "collectionName": "riders",
+  "info": {
+    "singularName": "rider",
+    "pluralName": "riders",
+    "displayName": "Rider",
+    "description": "Delivery riders who transport orders"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::user.user",
+      "inversedBy": "rider"
+    },
+    "vehicle_type": {
+      "type": "string"
+    },
+    "vehicle_make": {
+      "type": "string"
+    },
+    "vehicle_plate": {
+      "type": "string"
+    },
+    "license_number": {
+      "type": "string"
+    },
+    "license_photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "is_verified": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_online": {
+      "type": "boolean",
+      "default": false
+    },
+    "current_gps_lat": {
+      "type": "decimal"
+    },
+    "current_gps_lng": {
+      "type": "decimal"
+    },
+    "rating": {
+      "type": "decimal",
+      "default": 0
+    },
+    "total_ratings": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_deliveries_completed": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_earnings": {
+      "type": "decimal",
+      "default": 0
+    },
+    "bank_account_name": {
+      "type": "string"
+    },
+    "bank_account_number": {
+      "type": "string"
+    },
+    "bank_name": {
+      "type": "string"
+    }
+  }
+}

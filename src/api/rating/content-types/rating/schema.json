@@ -1,0 +1,45 @@
+{
+  "kind": "collectionType",
+  "collectionName": "ratings",
+  "info": {
+    "singularName": "rating",
+    "pluralName": "ratings",
+    "displayName": "Rating",
+    "description": "Order ratings and reviews"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::order.order",
+      "inversedBy": "rating"
+    },
+    "customer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user"
+    },
+    "overall_rating": {
+      "type": "integer",
+      "min": 1,
+      "max": 5
+    },
+    "shopper_rating": {
+      "type": "integer",
+      "min": 1,
+      "max": 5
+    },
+    "rider_rating": {
+      "type": "integer",
+      "min": 1,
+      "max": 5
+    },
+    "comment": {
+      "type": "text"
+    }
+  }
+}

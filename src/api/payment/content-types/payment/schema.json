@@ -1,0 +1,62 @@
+{
+  "kind": "collectionType",
+  "collectionName": "payments",
+  "info": {
+    "singularName": "payment",
+    "pluralName": "payments",
+    "displayName": "Payment",
+    "description": "Payment transactions"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "order": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::order.order",
+      "inversedBy": "payments"
+    },
+    "method": {
+      "type": "enumeration",
+      "enum": ["mobile_money", "card", "cash"],
+      "required": true
+    },
+    "provider": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "decimal",
+      "required": true
+    },
+    "currency": {
+      "type": "string",
+      "default": "UGX"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "processing", "completed", "failed", "refunded"],
+      "default": "pending",
+      "required": true
+    },
+    "transaction_id": {
+      "type": "string"
+    },
+    "phone_number": {
+      "type": "string"
+    },
+    "payment_token": {
+      "type": "text"
+    },
+    "error_message": {
+      "type": "text"
+    },
+    "provider_response": {
+      "type": "json"
+    },
+    "completed_at": {
+      "type": "datetime"
+    }
+  }
+}

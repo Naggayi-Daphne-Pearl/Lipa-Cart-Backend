@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+preBuildCommand = "npm run predeploy"
 buildCommand = "npm install && npm run build"
 
 [deploy]

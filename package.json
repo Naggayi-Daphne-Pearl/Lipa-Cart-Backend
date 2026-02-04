@@ -12,7 +12,10 @@
     "start": "strapi start",
     "strapi": "strapi",
     "upgrade": "npx @strapi/upgrade latest",
-    "upgrade:dry": "npx @strapi/upgrade latest --dry"
+    "upgrade:dry": "npx @strapi/upgrade latest --dry",
+    "predeploy": "npm run check:build && npm run check:types",
+    "check:build": "strapi build",
+    "check:types": "tsc --noEmit"
   },
   "dependencies": {
     "@strapi/plugin-cloud": "5.33.4",

@@ -50,7 +50,7 @@ const categories = [
     color: '#E53935',
     sort_order: 2,
     is_active: true,
-    imageUrl: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=400',
+    imageUrl: 'https://i.ibb.co/7dLSGRCv/lipa-cart-39.jpg',
   },
   {
     name: 'Dairy & Eggs',
@@ -68,7 +68,7 @@ const categories = [
     color: '#FF9800',
     sort_order: 4,
     is_active: true,
-    imageUrl: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400',
+    imageUrl: 'https://i.ibb.co/jvYvdnm9/lipa-cart-38.jpg',
   },
   {
     name: 'Beverages',
@@ -86,7 +86,7 @@ const categories = [
     color: '#9C27B0',
     sort_order: 6,
     is_active: true,
-    imageUrl: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400',
+    imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg',
   },
 ];
 
@@ -106,15 +106,15 @@ const subcategories = [
 // ── Products (with descriptions and image URLs from frontend) ──
 const products = [
   // Fruits
-  { name: 'Bananas (Matooke)', slug: 'bananas-matooke', description: 'Fresh green bananas for cooking. The staple food of Uganda — steam and mash for the perfect matoke.', estimated_price: 5000, common_units: ['bunch', 'kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400' },
+  { name: 'Bananas (Matooke)', slug: 'bananas-matooke', description: 'Fresh green bananas for cooking. The staple food of Uganda — steam and mash for the perfect matoke.', estimated_price: 5000, common_units: ['bunch', 'kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg' },
   { name: 'Mangoes', slug: 'mangoes', description: 'Sweet, juicy mangoes sourced from local farms. Perfect for snacking or fresh juice.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/JjGQj85G/lipa-cart-12.jpg' },
   { name: 'Pineapple', slug: 'pineapple', description: 'Ripe, sweet pineapple from Eastern Uganda. Great for juice, desserts, or eating fresh.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/N2pYBBJS/lipa-cart-11.jpg' },
   { name: 'Watermelon', slug: 'watermelon', description: 'Large, refreshing watermelon. Perfect for hot days and fresh juice.', estimated_price: 8000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/xDFKZV0p/lipa-cart-25.jpg' },
-  { name: 'Passion Fruit', slug: 'passion-fruit', description: 'Tangy passion fruit for fresh juice or desserts. Rich in vitamins.', estimated_price: 500, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1604495772376-9657f0035eb5?w=400' },
+  { name: 'Passion Fruit', slug: 'passion-fruit', description: 'Tangy passion fruit for fresh juice or desserts. Rich in vitamins.', estimated_price: 500, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/VYL0gkZx/lipa-cart-35.jpg' },
   // Vegetables
-  { name: 'Tomatoes', slug: 'tomatoes', description: 'Ripe red tomatoes from local farms. Perfect for salads, cooking, and sauces.', estimated_price: 3000, common_units: ['kg', 'piece', 'tin'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1546470427-0d4db154ceb8?w=400' },
+  { name: 'Tomatoes', slug: 'tomatoes', description: 'Ripe red tomatoes from local farms. Perfect for salads, cooking, and sauces.', estimated_price: 3000, common_units: ['kg', 'piece', 'tin'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/LDHxJmkN/lipa-cart-34.jpg' },
   { name: 'Onions', slug: 'onions', description: 'Red onions perfect for cooking and salads. A kitchen essential.', estimated_price: 3500, common_units: ['kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg' },
-  { name: 'Cabbage', slug: 'cabbage', description: 'Fresh green cabbage. Great for salads, stir-fry, or steaming.', estimated_price: 2000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1594282486552-05b4d80fbb9f?w=400' },
+  { name: 'Cabbage', slug: 'cabbage', description: 'Fresh green cabbage. Great for salads, stir-fry, or steaming.', estimated_price: 2000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/Mk3x6kHZ/lipa-cart-32.jpg' },
   { name: 'Nakati (African Nightshade)', slug: 'nakati', description: 'Traditional Ugandan leafy green vegetable. Nutritious and delicious when steamed.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/BKqDb5pK/lipa-cart-32.jpg' },
   { name: 'Sukuma Wiki (Collard Greens)', slug: 'sukuma-wiki', description: 'Popular East African leafy greens. A staple side dish in Kenya and Uganda.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/Czs9DpF7/lipa-cart-22.jpg' },
   // Herbs
@@ -142,8 +142,8 @@ const products = [
   { name: 'Mineral Water (1.5L)', slug: 'mineral-water-1-5l', description: 'Pure mineral water. Stay hydrated throughout the day.', estimated_price: 1500, common_units: ['bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/kgFgkdTQ/lipa-cart-10.jpg' },
   { name: 'Orange Juice (1L)', slug: 'orange-juice-1l', description: 'Fresh orange juice packed with vitamin C. No added sugars.', estimated_price: 5000, common_units: ['packet', 'bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg' },
   // Household
-  { name: 'Washing Soap (Bar)', slug: 'washing-soap-bar', description: 'Multipurpose washing soap bar for laundry and cleaning.', estimated_price: 2000, common_units: ['piece'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400' },
-  { name: 'Cooking Oil (1L)', slug: 'cooking-oil-1l', description: 'Vegetable cooking oil for everyday frying and cooking.', estimated_price: 8000, common_units: ['litre', 'bottle'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eabd7875faf?w=400' },
+  { name: 'Washing Soap (Bar)', slug: 'washing-soap-bar', description: 'Multipurpose washing soap bar for laundry and cleaning.', estimated_price: 2000, common_units: ['piece'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://i.ibb.co/NgVJjpTR/lipa-cart-31.jpg' },
+  { name: 'Cooking Oil (1L)', slug: 'cooking-oil-1l', description: 'Vegetable cooking oil for everyday frying and cooking.', estimated_price: 8000, common_units: ['litre', 'bottle'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://i.ibb.co/yn18Z6jj/lipa-cart-30.jpg' },
 ];
 
 // ── Recipes (Ugandan + East African + international) ──
@@ -208,7 +208,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.6, review_count: 67,
     tags: ['Traditional', 'Ugandan', 'Staple', 'Vegetarian'],
-    imageUrl: 'https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=800',
+    imageUrl: 'https://i.ibb.co/qF12DMYq/lipa-cart-29.jpg',
     ingredients: [
       { name: 'Green Bananas (Matooke)', quantity: 1, unit: 'bunch', notes: 'peeled' },
       { name: 'Tomatoes', quantity: 3, unit: 'piece', notes: 'chopped' },
@@ -344,7 +344,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.5, review_count: 156,
     tags: ['Breakfast', 'Quick', 'Healthy', 'Vegetarian'],
-    imageUrl: 'https://images.unsplash.com/photo-1541519227354-08fa5d50c44d?w=800',
+    imageUrl: 'https://i.ibb.co/n8r3DtbQ/lipa-cart-28.jpg',
     ingredients: [
       { name: 'Avocado', quantity: 2, unit: 'piece', notes: 'ripe' },
       { name: 'Bread', quantity: 4, unit: 'slices', notes: 'toasted' },
@@ -369,7 +369,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.7, review_count: 142,
     tags: ['Breakfast', 'Healthy', 'Quick', 'Vegetarian'],
-    imageUrl: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=800',
+    imageUrl: 'https://i.ibb.co/qMwPWDjw/lipa-cart-27.jpg',
     ingredients: [
       { name: 'Bananas', quantity: 2, unit: 'piece', notes: 'frozen' },
       { name: 'Passion Fruit', quantity: 3, unit: 'piece', notes: 'pulp scooped out' },
@@ -394,7 +394,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.6, review_count: 167,
     tags: ['Asian', 'Quick', 'Meat', 'Healthy'],
-    imageUrl: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+    imageUrl: 'https://i.ibb.co/xSKK7XWn/lipa-cart-26.jpg',
     ingredients: [
       { name: 'Beef Stew Meat', quantity: 500, unit: 'g', notes: 'sliced thinly' },
       { name: 'Cabbage', quantity: 0.25, unit: 'piece', notes: 'shredded' },
@@ -598,7 +598,7 @@ async function seed(strapi: Core.Strapi) {
         if (image) {
           await strapi.documents(item.uid as any).update({
             documentId: item.documentId,
-            data: { image: image.id },
+            data: { image: image.id } as any,
             status: 'published',
           });
           success++;

@@ -15,7 +15,8 @@
     "upgrade:dry": "npx @strapi/upgrade latest --dry",
     "predeploy": "npm run check:build && npm run check:types",
     "check:build": "strapi build",
-    "check:types": "tsc --noEmit"
+    "check:types": "tsc --noEmit",
+    "seed": "npx ts-node scripts/seed.ts"
   },
   "dependencies": {
     "@strapi/plugin-cloud": "5.33.4",

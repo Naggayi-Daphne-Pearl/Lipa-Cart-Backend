@@ -41,7 +41,7 @@ const categories = [
     color: '#4CAF50',
     sort_order: 1,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/pv1n76ZK/lipa-cart-6.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=400',
   },
   {
     name: 'Meat & Poultry',
@@ -59,7 +59,7 @@ const categories = [
     color: '#FFC107',
     sort_order: 3,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/7dLSGRCv/lipa-cart-39.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?w=400',
   },
   {
     name: 'Grains & Cereals',
@@ -77,7 +77,7 @@ const categories = [
     color: '#2196F3',
     sort_order: 5,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/jvYvdnm9/lipa-cart-38.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?w=400',
   },
   {
     name: 'Household & Cleaning',
@@ -107,40 +107,40 @@ const subcategories = [
 const products = [
   // Fruits
   { name: 'Bananas (Matooke)', slug: 'bananas-matooke', description: 'Fresh green bananas for cooking. The staple food of Uganda — steam and mash for the perfect matoke.', estimated_price: 5000, common_units: ['bunch', 'kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400' },
-  { name: 'Mangoes', slug: 'mangoes', description: 'Sweet, juicy mangoes sourced from local farms. Perfect for snacking or fresh juice.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/JjGQj85G/lipa-cart-12.jpg' },
-  { name: 'Pineapple', slug: 'pineapple', description: 'Ripe, sweet pineapple from Eastern Uganda. Great for juice, desserts, or eating fresh.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/N2pYBBJS/lipa-cart-11.jpg' },
-  { name: 'Watermelon', slug: 'watermelon', description: 'Large, refreshing watermelon. Perfect for hot days and fresh juice.', estimated_price: 8000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/xDFKZV0p/lipa-cart-25.jpg' },
+  { name: 'Mangoes', slug: 'mangoes', description: 'Sweet, juicy mangoes sourced from local farms. Perfect for snacking or fresh juice.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1553279768-865429fa0078?w=400' },
+  { name: 'Pineapple', slug: 'pineapple', description: 'Ripe, sweet pineapple from Eastern Uganda. Great for juice, desserts, or eating fresh.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1550258987-190a2d41a8ba?w=400' },
+  { name: 'Watermelon', slug: 'watermelon', description: 'Large, refreshing watermelon. Perfect for hot days and fresh juice.', estimated_price: 8000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1589984662646-e7b2e4962f18?w=400' },
   { name: 'Passion Fruit', slug: 'passion-fruit', description: 'Tangy passion fruit for fresh juice or desserts. Rich in vitamins.', estimated_price: 500, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://images.unsplash.com/photo-1604495772376-9657f0035eb5?w=400' },
   // Vegetables
   { name: 'Tomatoes', slug: 'tomatoes', description: 'Ripe red tomatoes from local farms. Perfect for salads, cooking, and sauces.', estimated_price: 3000, common_units: ['kg', 'piece', 'tin'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1546470427-0d4db154ceb8?w=400' },
-  { name: 'Onions', slug: 'onions', description: 'Red onions perfect for cooking and salads. A kitchen essential.', estimated_price: 3500, common_units: ['kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg' },
+  { name: 'Onions', slug: 'onions', description: 'Red onions perfect for cooking and salads. A kitchen essential.', estimated_price: 3500, common_units: ['kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=400' },
   { name: 'Cabbage', slug: 'cabbage', description: 'Fresh green cabbage. Great for salads, stir-fry, or steaming.', estimated_price: 2000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1594282486552-05b4d80fbb9f?w=400' },
-  { name: 'Nakati (African Nightshade)', slug: 'nakati', description: 'Traditional Ugandan leafy green vegetable. Nutritious and delicious when steamed.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/BKqDb5pK/lipa-cart-32.jpg' },
-  { name: 'Sukuma Wiki (Collard Greens)', slug: 'sukuma-wiki', description: 'Popular East African leafy greens. A staple side dish in Kenya and Uganda.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/Czs9DpF7/lipa-cart-22.jpg' },
+  { name: 'Nakati (African Nightshade)', slug: 'nakati', description: 'Traditional Ugandan leafy green vegetable. Nutritious and delicious when steamed.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=400' },
+  { name: 'Sukuma Wiki (Collard Greens)', slug: 'sukuma-wiki', description: 'Popular East African leafy greens. A staple side dish in Kenya and Uganda.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=400' },
   // Herbs
-  { name: 'Coriander (Dania)', slug: 'coriander', description: 'Fresh coriander leaves for garnishing and flavouring. Essential for East African cooking.', estimated_price: 500, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://i.ibb.co/0V5gYdJk/lipa-cart-34.jpg' },
-  { name: 'Ginger', slug: 'ginger', description: 'Fresh ginger root for tea, cooking, and natural remedies.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://i.ibb.co/hBWYJQhP/lipa-cart-31.jpg' },
+  { name: 'Coriander (Dania)', slug: 'coriander', description: 'Fresh coriander leaves for garnishing and flavouring. Essential for East African cooking.', estimated_price: 500, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://images.unsplash.com/photo-1592928302636-c83cf1e1c887?w=400' },
+  { name: 'Ginger', slug: 'ginger', description: 'Fresh ginger root for tea, cooking, and natural remedies.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://images.unsplash.com/photo-1615485500704-8e990f9900f7?w=400' },
   // Chicken
-  { name: 'Whole Chicken', slug: 'whole-chicken', description: 'Fresh whole chicken, locally raised. Perfect for roasting or stewing.', estimated_price: 18000, common_units: ['piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://i.ibb.co/hFNPP18g/lipa-cart-18.jpg' },
-  { name: 'Chicken Breast', slug: 'chicken-breast', description: 'Boneless chicken breast. Lean, versatile, and great for grilling or stir-fry.', estimated_price: 12000, common_units: ['kg', 'piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://i.ibb.co/0YkZGZW3/lipa-cart-17.jpg' },
+  { name: 'Whole Chicken', slug: 'whole-chicken', description: 'Fresh whole chicken, locally raised. Perfect for roasting or stewing.', estimated_price: 18000, common_units: ['piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=400' },
+  { name: 'Chicken Breast', slug: 'chicken-breast', description: 'Boneless chicken breast. Lean, versatile, and great for grilling or stir-fry.', estimated_price: 12000, common_units: ['kg', 'piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://images.unsplash.com/photo-1604503468506-a8da13d82571?w=400' },
   // Beef
-  { name: 'Beef Stew Meat', slug: 'beef-stew-meat', description: 'Tender beef chunks ideal for slow-cooked stews and curries.', estimated_price: 15000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg' },
-  { name: 'Minced Beef', slug: 'minced-beef', description: 'Freshly minced beef. Perfect for samosas, bolognese, or chapati fillings.', estimated_price: 16000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg' },
+  { name: 'Beef Stew Meat', slug: 'beef-stew-meat', description: 'Tender beef chunks ideal for slow-cooked stews and curries.', estimated_price: 15000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?w=400' },
+  { name: 'Minced Beef', slug: 'minced-beef', description: 'Freshly minced beef. Perfect for samosas, bolognese, or chapati fillings.', estimated_price: 16000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?w=400' },
   // Fish
-  { name: 'Tilapia', slug: 'tilapia', description: 'Freshly caught tilapia from Lake Victoria. Perfect for grilling or frying.', estimated_price: 12000, common_units: ['piece', 'kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://i.ibb.co/mF475pq7/lipa-cart-4.jpg' },
-  { name: 'Nile Perch', slug: 'nile-perch', description: 'Premium Nile Perch fillet from Lake Victoria. A Ugandan delicacy.', estimated_price: 18000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://i.ibb.co/1fkpD3mJ/lipa-cart-5.jpg' },
+  { name: 'Tilapia', slug: 'tilapia', description: 'Freshly caught tilapia from Lake Victoria. Perfect for grilling or frying.', estimated_price: 12000, common_units: ['piece', 'kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://images.unsplash.com/photo-1510130387422-82bed34b37e9?w=400' },
+  { name: 'Nile Perch', slug: 'nile-perch', description: 'Premium Nile Perch fillet from Lake Victoria. A Ugandan delicacy.', estimated_price: 18000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400' },
   // Dairy
-  { name: 'Fresh Milk (1L)', slug: 'fresh-milk-1l', description: 'Pasteurized fresh milk from local dairy farms.', estimated_price: 3500, common_units: ['litre', 'packet'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://i.ibb.co/PZB6D3zc/lipa-cart-13.jpg' },
-  { name: 'Yogurt (500ml)', slug: 'yogurt-500ml', description: 'Creamy natural yogurt. Great for breakfast or as a snack.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://i.ibb.co/1GBStBX3/lipa-cart-2.jpg' },
+  { name: 'Fresh Milk (1L)', slug: 'fresh-milk-1l', description: 'Pasteurized fresh milk from local dairy farms.', estimated_price: 3500, common_units: ['litre', 'packet'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400' },
+  { name: 'Yogurt (500ml)', slug: 'yogurt-500ml', description: 'Creamy natural yogurt. Great for breakfast or as a snack.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400' },
   // Eggs
-  { name: 'Eggs (Tray of 30)', slug: 'eggs-tray-30', description: 'Fresh eggs from free-range chickens. A kitchen essential.', estimated_price: 12000, common_units: ['tray', 'piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'eggs', imageUrl: 'https://i.ibb.co/cbBMFLLN/lipa-cart-26.jpg' },
+  { name: 'Eggs (Tray of 30)', slug: 'eggs-tray-30', description: 'Fresh eggs from free-range chickens. A kitchen essential.', estimated_price: 12000, common_units: ['tray', 'piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'eggs', imageUrl: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=400' },
   // Grains
-  { name: 'Rice (1kg)', slug: 'rice-1kg', description: 'High-quality long grain rice for everyday meals.', estimated_price: 5000, common_units: ['kg'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://i.ibb.co/P8gqkPHP/lipa-cart-27.jpg' },
-  { name: 'Maize Flour (Posho) 2kg', slug: 'maize-flour-2kg', description: 'Fine maize flour for making posho/ugali. A staple across East Africa.', estimated_price: 4000, common_units: ['kg', 'packet'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://i.ibb.co/7kCPjpZj/lipa-cart-28.jpg' },
-  { name: 'Bread (Loaf)', slug: 'bread-loaf', description: 'Freshly baked white bread loaf. Perfect for breakfast or sandwiches.', estimated_price: 5000, common_units: ['loaf'], categorySlug: 'grains-cereals', subcategorySlug: 'bread-bakery', imageUrl: 'https://i.ibb.co/Cs2SFS3r/lipa-cart-3.jpg' },
+  { name: 'Rice (1kg)', slug: 'rice-1kg', description: 'High-quality long grain rice for everyday meals.', estimated_price: 5000, common_units: ['kg'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400' },
+  { name: 'Maize Flour (Posho) 2kg', slug: 'maize-flour-2kg', description: 'Fine maize flour for making posho/ugali. A staple across East Africa.', estimated_price: 4000, common_units: ['kg', 'packet'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400' },
+  { name: 'Bread (Loaf)', slug: 'bread-loaf', description: 'Freshly baked white bread loaf. Perfect for breakfast or sandwiches.', estimated_price: 5000, common_units: ['loaf'], categorySlug: 'grains-cereals', subcategorySlug: 'bread-bakery', imageUrl: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400' },
   // Beverages
-  { name: 'Mineral Water (1.5L)', slug: 'mineral-water-1-5l', description: 'Pure mineral water. Stay hydrated throughout the day.', estimated_price: 1500, common_units: ['bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/kgFgkdTQ/lipa-cart-10.jpg' },
-  { name: 'Orange Juice (1L)', slug: 'orange-juice-1l', description: 'Fresh orange juice packed with vitamin C. No added sugars.', estimated_price: 5000, common_units: ['packet', 'bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg' },
+  { name: 'Mineral Water (1.5L)', slug: 'mineral-water-1-5l', description: 'Pure mineral water. Stay hydrated throughout the day.', estimated_price: 1500, common_units: ['bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=400' },
+  { name: 'Orange Juice (1L)', slug: 'orange-juice-1l', description: 'Fresh orange juice packed with vitamin C. No added sugars.', estimated_price: 5000, common_units: ['packet', 'bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400' },
   // Household
   { name: 'Washing Soap (Bar)', slug: 'washing-soap-bar', description: 'Multipurpose washing soap bar for laundry and cleaning.', estimated_price: 2000, common_units: ['piece'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400' },
   { name: 'Cooking Oil (1L)', slug: 'cooking-oil-1l', description: 'Vegetable cooking oil for everyday frying and cooking.', estimated_price: 8000, common_units: ['litre', 'bottle'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://images.unsplash.com/photo-1474979266404-7eabd7875faf?w=400' },
@@ -157,7 +157,7 @@ const recipes = [
     difficulty: 'medium' as const,
     rating: 4.8, review_count: 42,
     tags: ['Traditional', 'Ugandan', 'Special Occasion'],
-    imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=800',
     ingredients: [
       { name: 'Whole Chicken', quantity: 1, unit: 'piece', notes: 'cut into pieces' },
       { name: 'Groundnut Paste', quantity: 200, unit: 'g', notes: null },
@@ -183,7 +183,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.9, review_count: 128,
     tags: ['Quick', 'Street Food', 'Ugandan', 'Budget'],
-    imageUrl: 'https://i.ibb.co/n8BRfYH5/lipa-cart-8.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800',
     ingredients: [
       { name: 'Chapati', quantity: 1, unit: 'piece', notes: null },
       { name: 'Eggs', quantity: 2, unit: 'piece', notes: null },
@@ -233,7 +233,7 @@ const recipes = [
     difficulty: 'medium' as const,
     rating: 4.6, review_count: 198,
     tags: ['East African', 'Bread', 'Traditional', 'Vegetarian'],
-    imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=800',
     ingredients: [
       { name: 'All-Purpose Flour', quantity: 3, unit: 'cups', notes: null },
       { name: 'Cooking Oil', quantity: 0.5, unit: 'cup', notes: null },
@@ -260,7 +260,7 @@ const recipes = [
     difficulty: 'medium' as const,
     rating: 4.8, review_count: 189,
     tags: ['East African', 'Rice', 'Swahili', 'One-Pot'],
-    imageUrl: 'https://i.ibb.co/JVsVsWHz/lipa-cart-15.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=800',
     ingredients: [
       { name: 'Basmati Rice', quantity: 3, unit: 'cups', notes: null },
       { name: 'Beef Stew Meat', quantity: 500, unit: 'g', notes: null },
@@ -289,7 +289,7 @@ const recipes = [
     difficulty: 'easy' as const,
     rating: 4.7, review_count: 312,
     tags: ['Ugandan', 'Vegetarian', 'Traditional', 'Quick', 'Budget'],
-    imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1604329760661-e71dc83f8f26?w=800',
     ingredients: [
       { name: 'Maize Flour', quantity: 2, unit: 'cups', notes: null },
       { name: 'Beans', quantity: 2, unit: 'cups', notes: 'pre-soaked or canned' },
@@ -317,7 +317,7 @@ const recipes = [
     difficulty: 'medium' as const,
     rating: 4.8, review_count: 276,
     tags: ['Indian', 'Curry', 'Chicken', 'Creamy'],
-    imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
+    imageUrl: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=800',
     ingredients: [
       { name: 'Chicken Breast', quantity: 600, unit: 'g', notes: 'cubed' },
       { name: 'Yogurt', quantity: 1, unit: 'cup', notes: 'for marinade' },

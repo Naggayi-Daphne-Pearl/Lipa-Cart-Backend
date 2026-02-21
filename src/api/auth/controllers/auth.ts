@@ -1,0 +1,248 @@
+import type { Core } from '@strapi/strapi';
+import { createAuthUserWithRole } from '../../../services/role-helper';
+
+export default {
+  /**
+   * Sign up with phone, password, and optional name/email
+   * Creates both auth user and custom user profile
+   */
+  async signup(ctx: any) {
+    try {
+      const { phone, password, name, email, userType } = ctx.request.body;
+
+      // Validate required fields
+      if (!phone || !password) {
+        return ctx.badRequest('Phone and password are required');
+      }
+
+      // Validate phone format
+      if (!phone.startsWith('+256') || phone.length !== 13) {
+        return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX (9 digits after prefix)');
+      }
+
+      // Validate password strength (minimum 6 characters)
+      if (password.length < 6) {
+        return ctx.badRequest('Password must be at least 6 characters');
+      }
+
+      // Check if user already exists
+      const existingAuthUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({
+          where: { username: phone },
+        });
+
+      if (existingAuthUser) {
+        return ctx.badRequest('User with this phone number already exists');
+      }
+
+      // Create auth user with password
+      const authUser = await createAuthUserWithRole(strapi, {
+        username: phone,
+        email: email || `${phone.replace('+', '')}@lipacart.local`,
+        password, // Will be hashed by Strapi
+        userType: userType || 'customer',
+        confirmed: true,
+      });
+
+      if (!authUser) {
+        ctx.throw(500, 'Failed to create user');
+      }
+
+      // Create custom user profile
+      const customUser: any = await strapi.entityService.create('api::user.user', {
+        data: {
+          phone,
+          name: name || null,
+          email: email || null,
+          user_type: userType || 'customer',
+          is_active: true,
+        },
+        populate: { profile_photo: true },
+      });
+
+      // Generate JWT
+      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
+        id: authUser.id,
+      });
+
+      ctx.body = {
+        jwt,
+        user: {
+          id: customUser.documentId,
+          phone: customUser.phone,
+          name: customUser.name ?? null,
+          email: customUser.email ?? null,
+          user_type: customUser.user_type,
+          profile_photo: customUser.profile_photo?.url ?? null,
+        },
+      };
+    } catch (error) {
+      console.error('Signup error:', error);
+      ctx.throw(500, 'Failed to sign up');
+    }
+  },
+
+  /**
+   * Login with phone and password
+   * Returns JWT token and user profile
+   */
+  async login(ctx: any) {
+    try {
+      const { phone, password } = ctx.request.body;
+
+      // Validate required fields
+      if (!phone || !password) {
+        return ctx.badRequest('Phone and password are required');
+      }
+
+      // Find auth user by phone (username)
+      const authUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({
+          where: { username: phone },
+          populate: { role: true },
+        });
+
+      if (!authUser) {
+        return ctx.badRequest('Invalid phone or password');
+      }
+
+      // Verify password using Strapi's built-in password verification
+      const validPassword = await strapi.plugins[
+        'users-permissions'
+      ].services.user.validatePassword(password, authUser.password);
+
+      if (!validPassword) {
+        return ctx.badRequest('Invalid phone or password');
+      }
+
+      // Check if user is blocked
+      if (authUser.blocked) {
+        return ctx.badRequest('Your account has been blocked');
+      }
+
+      // Fetch custom user profile
+      const customUser: any = await strapi
+        .query('api::user.user')
+        .findOne({
+          where: { phone },
+          populate: { profile_photo: true },
+        });
+
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      // Generate JWT
+      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
+        id: authUser.id,
+      });
+
+      ctx.body = {
+        jwt,
+        user: {
+          id: customUser.documentId,
+          phone: customUser.phone,
+          name: customUser.name ?? null,
+          email: customUser.email ?? null,
+          user_type: customUser.user_type,
+          profile_photo: customUser.profile_photo?.url ?? null,
+        },
+      };
+    } catch (error) {
+      console.error('Login error:', error);
+      ctx.throw(500, 'Failed to login');
+    }
+  },
+
+  /**
+   * Refresh JWT token
+   * Takes a valid (but potentially expiring) JWT and issues a new one
+   */
+  async refresh(ctx: any) {
+    try {
+      // User is already authenticated via middleware (JWT exists and is valid)
+      const user = ctx.state.user;
+
+      if (!user) {
+        return ctx.unauthorized('No user found');
+      }
+
+      // Issue new JWT token
+      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
+        id: user.id,
+      });
+
+      // Fetch custom user profile for response
+      const customUser: any = await strapi
+        .query('api::user.user')
+        .findOne({
+          where: { phone: user.username },
+          populate: { profile_photo: true },
+        });
+
+      ctx.body = {
+        jwt,
+        user: customUser
+          ? {
+              id: customUser.documentId,
+              phone: customUser.phone,
+              name: customUser.name ?? null,
+              email: customUser.email ?? null,
+              user_type: customUser.user_type,
+              profile_photo: customUser.profile_photo?.url ?? null,
+            }
+          : {
+              id: user.id,
+              phone: user.username,
+              name: null,
+              email: user.email,
+              user_type: 'customer',
+              profile_photo: null,
+            },
+      };
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      ctx.throw(500, 'Failed to refresh token');
+    }
+  },
+
+  /**
+   * Get current authenticated user profile
+   * Standardized /api/auth/me endpoint
+   */
+  async me(ctx: any) {
+    try {
+      const user = ctx.state.user;
+
+      if (!user) {
+        return ctx.unauthorized('No user found');
+      }
+
+      // Fetch custom user profile
+      const customUser: any = await strapi
+        .query('api::user.user')
+        .findOne({
+          where: { phone: user.username },
+          populate: { profile_photo: true },
+        });
+
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      ctx.body = {
+        id: customUser.documentId,
+        phone: customUser.phone,
+        name: customUser.name ?? null,
+        email: customUser.email ?? null,
+        user_type: customUser.user_type,
+        profile_photo: customUser.profile_photo?.url ?? null,
+      };
+    } catch (error) {
+      console.error('Get user profile error:', error);
+      ctx.throw(500, 'Failed to get user profile');
+    }
+  },
+} as any;

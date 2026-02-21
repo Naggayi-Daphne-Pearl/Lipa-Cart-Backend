@@ -27,13 +27,45 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
    */
   async update(ctx) {
     const response = await super.update(ctx);
-    
+
     // Log user updates for tracking
     if (response?.data) {
       console.log(`✓ Updated user profile: ${response.data.id} (${response.data.user_type})`);
     }
-    
+
     return response;
+  },
+
+  /**
+   * Get current user profile
+   * Uses JWT to identify the authenticated user
+   */
+  async me(ctx: any) {
+    try {
+      const authUser = ctx.state.user;
+      if (!authUser) {
+        return ctx.unauthorized('You must be authenticated to access this endpoint');
+      }
+
+      // Find custom user by phone using direct database access (bypasses permission checks)
+      const customUser = (await strapi.db.connection('api_users').where({ phone: authUser.username }).first()) as any;
+
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      ctx.body = {
+        id: customUser.documentId,
+        phone: customUser.phone,
+        name: customUser.name ?? null,
+        email: customUser.email ?? null,
+        user_type: customUser.user_type,
+        profile_photo: customUser.profile_photo?.url ?? null,
+      };
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      ctx.throw(500, 'Failed to fetch user profile');
+    }
   },
 }));
 

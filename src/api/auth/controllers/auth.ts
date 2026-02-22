@@ -61,6 +61,23 @@ export default {
         populate: { profile_photo: true },
       });
 
+      // Create customer profile if user type is customer
+      let customerId = null;
+      if ((userType || 'customer') === 'customer') {
+        // Generate unique referral code
+        const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
+        
+        const customer = await strapi.entityService.create('api::customer.customer', {
+          data: {
+            user: customUser.id,
+            referral_code: referralCode,
+            total_orders: 0,
+          },
+        });
+        
+        customerId = customer.id;
+      }
+
       // Generate JWT
       const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
         id: authUser.id,
@@ -75,6 +92,7 @@ export default {
           email: customUser.email ?? null,
           user_type: customUser.user_type,
           profile_photo: customUser.profile_photo?.url ?? null,
+          customer_id: customerId,
         },
       };
     } catch (error) {
@@ -124,14 +142,41 @@ export default {
 
       // Fetch custom user profile
       const customUser: any = await strapi
-        .query('api::user.user')
-        .findOne({
-          where: { phone },
-          populate: { profile_photo: true },
+        .entityService
+        .findMany('api::user.user', {
+          filters: { phone },
+          populate: { profile_photo: true, customer: true },
         });
 
-      if (!customUser) {
+      if (!customUser || customUser.length === 0) {
         return ctx.notFound('User profile not found');
+      }
+
+      const user = customUser[0];
+
+      // Get customer ID if user is a customer
+      let customerId = null;
+      if (user.user_type === 'customer') {
+        // Check if customer record exists
+        if (user.customer) {
+          customerId = user.customer.id;
+        } else {
+          // Create customer record if it doesn't exist
+          try {
+            const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
+            const newCustomer = await strapi.entityService.create('api::customer.customer', {
+              data: {
+                user: user.id,
+                referral_code: referralCode,
+                total_orders: 0,
+              },
+            });
+            customerId = newCustomer.id;
+          } catch (err) {
+            console.error('Failed to create customer record:', err);
+            // Continue anyway, just without customer ID
+          }
+        }
       }
 
       // Generate JWT
@@ -142,12 +187,13 @@ export default {
       ctx.body = {
         jwt,
         user: {
-          id: customUser.documentId,
-          phone: customUser.phone,
-          name: customUser.name ?? null,
-          email: customUser.email ?? null,
-          user_type: customUser.user_type,
-          profile_photo: customUser.profile_photo?.url ?? null,
+          id: user.documentId,
+          phone: user.phone,
+          name: user.name ?? null,
+          email: user.email ?? null,
+          user_type: user.user_type,
+          profile_photo: user.profile_photo?.url ?? null,
+          customer_id: customerId,
         },
       };
     } catch (error) {

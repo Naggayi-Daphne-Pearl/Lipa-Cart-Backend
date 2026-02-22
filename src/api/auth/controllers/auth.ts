@@ -86,7 +86,8 @@ export default {
       ctx.body = {
         jwt,
         user: {
-          id: customUser.documentId,
+          id: customUser.id,
+          document_id: customUser.documentId,
           phone: customUser.phone,
           name: customUser.name ?? null,
           email: customUser.email ?? null,
@@ -187,7 +188,8 @@ export default {
       ctx.body = {
         jwt,
         user: {
-          id: user.documentId,
+          id: user.id,
+          document_id: user.documentId,
           phone: user.phone,
           name: user.name ?? null,
           email: user.email ?? null,
@@ -225,27 +227,33 @@ export default {
         .query('api::user.user')
         .findOne({
           where: { phone: user.username },
-          populate: { profile_photo: true },
+          populate: { profile_photo: true, customer: true },
         });
+
+      const customerId = customUser?.customer?.id ?? null;
 
       ctx.body = {
         jwt,
         user: customUser
           ? {
-              id: customUser.documentId,
+              id: customUser.id,
+              document_id: customUser.documentId,
               phone: customUser.phone,
               name: customUser.name ?? null,
               email: customUser.email ?? null,
               user_type: customUser.user_type,
               profile_photo: customUser.profile_photo?.url ?? null,
+              customer_id: customerId,
             }
           : {
               id: user.id,
+              document_id: null,
               phone: user.username,
               name: null,
               email: user.email,
               user_type: 'customer',
               profile_photo: null,
+              customer_id: null,
             },
       };
     } catch (error) {
@@ -271,7 +279,7 @@ export default {
         .query('api::user.user')
         .findOne({
           where: { phone: user.username },
-          populate: { profile_photo: true },
+          populate: { profile_photo: true, customer: true },
         });
 
       if (!customUser) {
@@ -279,12 +287,14 @@ export default {
       }
 
       ctx.body = {
-        id: customUser.documentId,
+        id: customUser.id,
+        document_id: customUser.documentId,
         phone: customUser.phone,
         name: customUser.name ?? null,
         email: customUser.email ?? null,
         user_type: customUser.user_type,
         profile_photo: customUser.profile_photo?.url ?? null,
+        customer_id: customUser.customer?.id ?? null,
       };
     } catch (error) {
       console.error('Get user profile error:', error);

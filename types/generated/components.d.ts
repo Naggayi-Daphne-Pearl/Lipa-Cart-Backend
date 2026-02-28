@@ -13,6 +13,7 @@ export interface ListItem extends Struct.ComponentSchema {
     product: Schema.Attribute.Relation<'oneToOne', 'api::product.product'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<1>;
     unit: Schema.Attribute.String;
+    unit_price: Schema.Attribute.Decimal;
   };
 }
 

@@ -1,6 +1,29 @@
 import { factories } from '@strapi/strapi';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
+  async find(ctx: any) {
+    try {
+      console.log('DEBUG: Finding orders with query:', ctx.query);
+      const result = await super.find(ctx);
+      
+      if (result.data && Array.isArray(result.data)) {
+        console.log(`DEBUG: Found ${result.data.length} orders`);
+        result.data.forEach((order: any, index: number) => {
+          const orderAttrs = order.attributes || order;
+          console.log(`DEBUG: Order ${index} - ID: ${order.id}, Order#: ${orderAttrs.order_number}, Items count: ${orderAttrs.order_items?.length || 0}`);
+          if (orderAttrs.order_items) {
+            console.log(`DEBUG: Order ${index} order_items structure:`, JSON.stringify(orderAttrs.order_items, null, 2));
+          }
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('ERROR: Failed to find orders:', error);
+      throw error;
+    }
+  },
+
   async createGuestOrder(ctx: any) {
     try {
       const { phone, address_line, city, landmark, subtotal, service_fee, delivery_fee, total } =

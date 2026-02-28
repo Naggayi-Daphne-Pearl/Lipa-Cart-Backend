@@ -4,8 +4,8 @@
   "info": {
     "singularName": "shopping-list",
     "pluralName": "shopping-lists",
-    "displayName": "Shopping List Template",
-    "description": "Pre-made shopping list templates"
+    "displayName": "Shopping List",
+    "description": "Customer shopping lists"
   },
   "options": {
     "draftAndPublish": true
@@ -33,6 +33,12 @@
       "type": "component",
       "repeatable": true,
       "component": "list.item"
+    },
+    "customer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::customer.customer",
+      "inversedBy": "shopping_lists"
     }
   }
 }

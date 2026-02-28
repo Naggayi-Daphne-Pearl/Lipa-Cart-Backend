@@ -1,3 +1,14 @@
-import { factories } from '@strapi/strapi';
-
-export default factories.createCoreRouter('api::order-item.order-item');
+export default {
+  type: 'content-api',
+  routes: [
+    {
+      method: 'POST',
+      path: '/order-items/bulk',
+      handler: 'order-item.bulkCreate',
+      config: {
+        policies: [],
+        middlewares: [],
+      },
+    },
+  ],
+};

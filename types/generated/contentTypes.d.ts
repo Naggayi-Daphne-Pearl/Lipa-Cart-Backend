@@ -586,6 +586,10 @@ export interface ApiCustomerCustomer extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::customer.customer'
     >;
+    shopping_lists: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::shopping-list.shopping-list'
+    >;
     total_orders: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -987,8 +991,8 @@ export interface ApiShoppingListShoppingList
   extends Struct.CollectionTypeSchema {
   collectionName: 'shopping_lists';
   info: {
-    description: 'Pre-made shopping list templates';
-    displayName: 'Shopping List Template';
+    description: 'Customer shopping lists';
+    displayName: 'Shopping List';
     pluralName: 'shopping-lists';
     singularName: 'shopping-list';
   };
@@ -1000,6 +1004,7 @@ export interface ApiShoppingListShoppingList
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    customer: Schema.Attribute.Relation<'manyToOne', 'api::customer.customer'>;
     description: Schema.Attribute.Text;
     emoji: Schema.Attribute.String;
     items: Schema.Attribute.Component<'list.item', true>;

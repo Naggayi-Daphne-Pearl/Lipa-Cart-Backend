@@ -16,6 +16,9 @@
     "unit": {
       "type": "string"
     },
+    "unit_price": {
+      "type": "decimal"
+    },
     "budget_amount": {
       "type": "decimal"
     },

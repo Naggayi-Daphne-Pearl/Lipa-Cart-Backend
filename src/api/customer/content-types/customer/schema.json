@@ -48,6 +48,12 @@
       "relation": "oneToMany",
       "target": "api::address.address",
       "mappedBy": "customer"
+    },
+    "shopping_lists": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::shopping-list.shopping-list",
+      "mappedBy": "customer"
     }
   }
 }

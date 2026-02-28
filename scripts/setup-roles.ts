@@ -35,6 +35,9 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       { action: 'findOne', contentType: 'api::recipe.recipe' },
       { action: 'find', contentType: 'api::shopping-list.shopping-list' },
       { action: 'findOne', contentType: 'api::shopping-list.shopping-list' },
+      { action: 'create', contentType: 'api::shopping-list.shopping-list' },
+      { action: 'update', contentType: 'api::shopping-list.shopping-list' },
+      { action: 'delete', contentType: 'api::shopping-list.shopping-list' },
       
       // Own profile management
       { action: 'find', contentType: 'api::user.user' },

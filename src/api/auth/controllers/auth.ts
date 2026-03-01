@@ -66,7 +66,7 @@ export default {
       if ((userType || 'customer') === 'customer') {
         // Generate unique referral code
         const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
-        
+
         const customer = await strapi.entityService.create('api::customer.customer', {
           data: {
             user: customUser.id,
@@ -74,8 +74,26 @@ export default {
             total_orders: 0,
           },
         });
-        
+
         customerId = customer.id;
+      }
+
+      // Get shopper ID and KYC status if user type is shopper
+      let shopperId = null;
+      let kycStatus = 'not_submitted';
+      if ((userType || 'customer') === 'shopper') {
+        try {
+          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
+            where: { user: customUser.id },
+            select: ['id', 'documentId', 'kyc_status'],
+          });
+          if (shopper) {
+            shopperId = shopper.documentId ?? String(shopper.id);
+            kycStatus = shopper.kyc_status ?? 'not_submitted';
+          }
+        } catch (err) {
+          console.error('Failed to fetch shopper record:', err);
+        }
       }
 
       // Generate JWT
@@ -94,6 +112,7 @@ export default {
           user_type: customUser.user_type,
           profile_photo: customUser.profile_photo?.url ?? null,
           customer_id: customerId,
+          ...(userType === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
         },
       };
     } catch (error) {
@@ -180,6 +199,24 @@ export default {
         }
       }
 
+      // Get shopper ID and KYC status if user is a shopper
+      let shopperId = null;
+      let kycStatus = 'not_submitted';
+      if (user.user_type === 'shopper') {
+        try {
+          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
+            where: { user: user.id },
+            select: ['id', 'documentId', 'kyc_status'],
+          });
+          if (shopper) {
+            shopperId = shopper.documentId ?? String(shopper.id);
+            kycStatus = shopper.kyc_status ?? 'not_submitted';
+          }
+        } catch (err) {
+          console.error('Failed to fetch shopper record:', err);
+        }
+      }
+
       // Generate JWT
       const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
         id: authUser.id,
@@ -196,6 +233,7 @@ export default {
           user_type: user.user_type,
           profile_photo: user.profile_photo?.url ?? null,
           customer_id: customerId,
+          ...(user.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
         },
       };
     } catch (error) {
@@ -232,6 +270,24 @@ export default {
 
       const customerId = customUser?.customer?.id ?? null;
 
+      // Get shopper ID and KYC status if user is a shopper
+      let shopperId = null;
+      let kycStatus = 'not_submitted';
+      if (customUser?.user_type === 'shopper') {
+        try {
+          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
+            where: { user: customUser.id },
+            select: ['id', 'documentId', 'kyc_status'],
+          });
+          if (shopper) {
+            shopperId = shopper.documentId ?? String(shopper.id);
+            kycStatus = shopper.kyc_status ?? 'not_submitted';
+          }
+        } catch (err) {
+          console.error('Failed to fetch shopper record:', err);
+        }
+      }
+
       ctx.body = {
         jwt,
         user: customUser
@@ -244,6 +300,7 @@ export default {
               user_type: customUser.user_type,
               profile_photo: customUser.profile_photo?.url ?? null,
               customer_id: customerId,
+              ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
             }
           : {
               id: user.id,
@@ -286,6 +343,24 @@ export default {
         return ctx.notFound('User profile not found');
       }
 
+      // Get shopper ID and KYC status if user is a shopper
+      let shopperId = null;
+      let kycStatus = 'not_submitted';
+      if (customUser.user_type === 'shopper') {
+        try {
+          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
+            where: { user: customUser.id },
+            select: ['id', 'documentId', 'kyc_status'],
+          });
+          if (shopper) {
+            shopperId = shopper.documentId ?? String(shopper.id);
+            kycStatus = shopper.kyc_status ?? 'not_submitted';
+          }
+        } catch (err) {
+          console.error('Failed to fetch shopper record:', err);
+        }
+      }
+
       ctx.body = {
         id: customUser.id,
         document_id: customUser.documentId,
@@ -295,6 +370,7 @@ export default {
         user_type: customUser.user_type,
         profile_photo: customUser.profile_photo?.url ?? null,
         customer_id: customUser.customer?.id ?? null,
+        ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
       };
     } catch (error) {
       console.error('Get user profile error:', error);

@@ -961,10 +961,18 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    face_photo: Schema.Attribute.Media<'images'>;
     id_number: Schema.Attribute.String;
     id_photo: Schema.Attribute.Media<'images'>;
     is_online: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    kyc_rejection_reason: Schema.Attribute.String;
+    kyc_reviewed_at: Schema.Attribute.DateTime;
+    kyc_status: Schema.Attribute.Enumeration<
+      ['not_submitted', 'pending_review', 'approved', 'rejected']
+    > &
+      Schema.Attribute.DefaultTo<'not_submitted'>;
+    kyc_submitted_at: Schema.Attribute.DateTime;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',

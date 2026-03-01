@@ -67,6 +67,25 @@
     },
     "bank_name": {
       "type": "string"
+    },
+    "kyc_status": {
+      "type": "enumeration",
+      "enum": ["not_submitted", "pending_review", "approved", "rejected"],
+      "default": "not_submitted"
+    },
+    "face_photo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
+    },
+    "kyc_rejection_reason": {
+      "type": "string"
+    },
+    "kyc_submitted_at": {
+      "type": "datetime"
+    },
+    "kyc_reviewed_at": {
+      "type": "datetime"
     }
   }
 }

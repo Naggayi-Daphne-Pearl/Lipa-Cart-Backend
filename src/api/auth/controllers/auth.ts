@@ -25,6 +25,14 @@ export default {
         return ctx.badRequest('Password must be at least 6 characters');
       }
 
+      // Prevent signup for admin and rider roles (only allow customer and shopper)
+      const normalizedUserType = (userType || 'customer').toLowerCase();
+      if (normalizedUserType === 'admin' || normalizedUserType === 'rider') {
+        return ctx.forbidden(
+          `${normalizedUserType.charAt(0).toUpperCase() + normalizedUserType.slice(1)} accounts cannot be created via signup. Please contact the administrator.`
+        );
+      }
+
       // Check if user already exists
       const existingAuthUser = await strapi
         .query('plugin::users-permissions.user')
@@ -375,6 +383,49 @@ export default {
     } catch (error) {
       console.error('Get user profile error:', error);
       ctx.throw(500, 'Failed to get user profile');
+    }
+  },
+
+  /**
+   * TEMPORARY ENDPOINT: Assign admin role to a user
+   * This is for testing/admin setup purposes. Remove in production.
+   */
+  async assignAdminRole(ctx: any) {
+    try {
+      const { userId } = ctx.request.body;
+
+      if (!userId) {
+        return ctx.badRequest('userId is required');
+      }
+
+      // Get the admin role
+      const adminRole = await strapi
+        .query('plugin::users-permissions.role')
+        .findOne({ where: { type: 'admin' } });
+
+      if (!adminRole) {
+        return ctx.notFound('Admin role not found');
+      }
+
+      // Update the user with the admin role
+      const updatedUser = await strapi
+        .query('plugin::users-permissions.user')
+        .update({
+          where: { id: userId },
+          data: { role: adminRole.id },
+        });
+
+      ctx.body = {
+        message: `Admin role assigned to user ${userId}`,
+        user: {
+          id: updatedUser.id,
+          username: updatedUser.username,
+          role: adminRole.type,
+        },
+      };
+    } catch (error) {
+      console.error('Assign admin role error:', error);
+      ctx.throw(500, 'Failed to assign admin role');
     }
   },
 } as any;

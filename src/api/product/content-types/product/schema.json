@@ -31,9 +31,7 @@
       "type": "json"
     },
     "image": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": ["images"]
+      "type": "string"
     },
     "is_active": {
       "type": "boolean",

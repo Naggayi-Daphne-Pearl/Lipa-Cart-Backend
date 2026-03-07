@@ -24,9 +24,7 @@
       "type": "text"
     },
     "image": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": ["images"]
+      "type": "string"
     },
     "color": {
       "type": "string"

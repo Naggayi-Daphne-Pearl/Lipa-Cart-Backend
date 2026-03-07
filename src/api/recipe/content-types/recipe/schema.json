@@ -24,17 +24,13 @@
       "type": "richtext"
     },
     "image": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": ["images"]
+      "type": "string"
     },
     "author_name": {
       "type": "string"
     },
     "author_image": {
-      "type": "media",
-      "multiple": false,
-      "allowedTypes": ["images"]
+      "type": "string"
     },
     "prep_time": {
       "type": "integer"

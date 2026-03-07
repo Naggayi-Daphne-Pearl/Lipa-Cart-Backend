@@ -35,6 +35,12 @@
       "multiple": false,
       "allowedTypes": ["images"]
     },
+    "id_photo_url": {
+      "type": "string"
+    },
+    "face_photo_url": {
+      "type": "string"
+    },
     "is_verified": {
       "type": "boolean",
       "default": false

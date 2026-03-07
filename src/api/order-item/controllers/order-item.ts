@@ -15,6 +15,93 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
     }
   },
 
+  /**
+   * Shopper updates an order item (mark found, set actual price)
+   * PATCH /api/order-items/:id/shopper-update
+   */
+  async shopperUpdate(ctx: any) {
+    try {
+      if (!ctx.state.user) return ctx.unauthorized('Authentication required');
+
+      const { id } = ctx.params; // documentId of the order item
+      const { found, actual_price } = ctx.request.body;
+
+      // Find the order item
+      const item: any = await strapi.db.query('api::order-item.order-item').findOne({
+        where: { documentId: id },
+        populate: ['order', 'order.shopper'],
+      });
+
+      if (!item) return ctx.notFound('Order item not found');
+
+      // Build update data
+      const updateData: any = {};
+      if (typeof found === 'boolean') updateData.found = found;
+      if (actual_price !== undefined) updateData.actual_price = actual_price;
+
+      const updated = await strapi.entityService.update('api::order-item.order-item', item.id, {
+        data: updateData,
+        populate: { product: true, order: true },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Shopper update item error:', error);
+      ctx.throw(500, 'Failed to update order item');
+    }
+  },
+
+  /**
+   * Shopper batch-updates multiple order items at once
+   * PATCH /api/order-items/batch-update
+   */
+  async batchUpdate(ctx: any) {
+    try {
+      if (!ctx.state.user) return ctx.unauthorized('Authentication required');
+
+      const { items } = ctx.request.body;
+      if (!items || !Array.isArray(items)) {
+        return ctx.badRequest('items array is required');
+      }
+
+      const results = [];
+      const failed = [];
+
+      for (const itemUpdate of items) {
+        try {
+          const { documentId, found, actual_price } = itemUpdate;
+          const item: any = await strapi.db.query('api::order-item.order-item').findOne({
+            where: { documentId },
+          });
+
+          if (!item) {
+            failed.push({ documentId, error: 'Not found' });
+            continue;
+          }
+
+          const updateData: any = {};
+          if (typeof found === 'boolean') updateData.found = found;
+          if (actual_price !== undefined) updateData.actual_price = actual_price;
+
+          const updated = await strapi.entityService.update('api::order-item.order-item', item.id, {
+            data: updateData,
+          });
+          results.push(updated);
+        } catch (e) {
+          failed.push({ documentId: itemUpdate.documentId, error: e.message });
+        }
+      }
+
+      ctx.body = {
+        data: results,
+        meta: { updated: results.length, failed: failed.length },
+      };
+    } catch (error) {
+      console.error('Batch update error:', error);
+      ctx.throw(500, 'Failed to batch update items');
+    }
+  },
+
   async bulkCreate(ctx: any) {
     try {
       // Check authentication

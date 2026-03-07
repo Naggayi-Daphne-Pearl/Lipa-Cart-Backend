@@ -86,21 +86,21 @@ export default {
         customerId = customer.id;
       }
 
-      // Get shopper ID and KYC status if user type is shopper
+      // Create shopper profile if user type is shopper
       let shopperId = null;
       let kycStatus = 'not_submitted';
-      if ((userType || 'customer') === 'shopper') {
+      if (normalizedUserType === 'shopper') {
         try {
-          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
-            where: { user: customUser.id },
-            select: ['id', 'documentId', 'kyc_status'],
+          const shopper: any = await strapi.entityService.create('api::shopper.shopper', {
+            data: {
+              user: customUser.documentId,
+              kyc_status: 'not_submitted',
+            },
           });
-          if (shopper) {
-            shopperId = shopper.documentId ?? String(shopper.id);
-            kycStatus = shopper.kyc_status ?? 'not_submitted';
-          }
+          shopperId = shopper.documentId ?? String(shopper.id);
+          kycStatus = shopper.kyc_status ?? 'not_submitted';
         } catch (err) {
-          console.error('Failed to fetch shopper record:', err);
+          console.error('Failed to create shopper record:', err);
         }
       }
 
@@ -383,6 +383,96 @@ export default {
     } catch (error) {
       console.error('Get user profile error:', error);
       ctx.throw(500, 'Failed to get user profile');
+    }
+  },
+
+  /**
+   * Forgot password - Step 1: Send OTP
+   * Verifies user exists, then sends OTP to their phone
+   */
+  async forgotPassword(ctx: any) {
+    try {
+      const { phone } = ctx.request.body;
+
+      if (!phone) {
+        return ctx.badRequest('Phone number is required');
+      }
+
+      if (!phone.startsWith('+256') || phone.length !== 13) {
+        return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX');
+      }
+
+      // Verify that a user with this phone exists
+      const authUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({ where: { username: phone } });
+
+      if (!authUser) {
+        return ctx.badRequest('No account found with this phone number');
+      }
+
+      // Send OTP
+      const otpService = strapi.service('api::otp.otp');
+      otpService.generateOtp(phone);
+
+      ctx.body = {
+        success: true,
+        message: 'Verification code sent',
+      };
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      ctx.throw(500, 'Failed to send verification code');
+    }
+  },
+
+  /**
+   * Reset password - Step 2: Verify OTP and set new password
+   * Takes phone + OTP + new password, verifies OTP, updates password
+   */
+  async resetPassword(ctx: any) {
+    try {
+      const { phone, otp, newPassword } = ctx.request.body;
+
+      if (!phone || !otp || !newPassword) {
+        return ctx.badRequest('Phone, OTP, and new password are required');
+      }
+
+      if (newPassword.length < 6) {
+        return ctx.badRequest('Password must be at least 6 characters');
+      }
+
+      // Verify OTP
+      const otpService = strapi.service('api::otp.otp');
+      const isValid = otpService.verifyOtp(phone, otp);
+
+      if (!isValid) {
+        ctx.status = 401;
+        return (ctx.body = { error: 'Invalid or expired verification code' });
+      }
+
+      // Find auth user
+      const authUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({ where: { username: phone } });
+
+      if (!authUser) {
+        return ctx.notFound('User not found');
+      }
+
+      // Update password using Strapi's user service (handles hashing)
+      await strapi.plugins['users-permissions'].services.user.edit(authUser.id, {
+        password: newPassword,
+      });
+
+      console.log(`Password reset successful for ${phone}`);
+
+      ctx.body = {
+        success: true,
+        message: 'Password reset successfully',
+      };
+    } catch (error) {
+      console.error('Reset password error:', error);
+      ctx.throw(500, 'Failed to reset password');
     }
   },
 

@@ -125,6 +125,128 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     }
   },
 
+  /**
+   * Shopper claims an available order
+   * POST /api/orders/:id/claim
+   */
+  async claimOrder(ctx: any) {
+    try {
+      const user = ctx.state.user;
+      if (!user) return ctx.unauthorized('Authentication required');
+
+      const { id } = ctx.params; // documentId of the order
+
+      // Find the custom user (shopper)
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: user.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can claim orders');
+      }
+
+      // Find the order
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'payment_confirmed') {
+        return ctx.badRequest('Order is not available for claiming');
+      }
+
+      if (order.shopper) {
+        return ctx.badRequest('Order is already assigned to a shopper');
+      }
+
+      // Assign shopper and update status
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          shopper: customUser.id,
+          status: 'shopper_assigned',
+          shopper_assigned_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Claim order error:', error);
+      ctx.throw(500, 'Failed to claim order');
+    }
+  },
+
+  /**
+   * Shopper updates order status (shopping, ready_for_pickup)
+   * PATCH /api/orders/:id/shopper-status
+   */
+  async updateShopperStatus(ctx: any) {
+    try {
+      const user = ctx.state.user;
+      if (!user) return ctx.unauthorized('Authentication required');
+
+      const { id } = ctx.params;
+      const { status } = ctx.request.body;
+
+      const allowedTransitions: Record<string, string[]> = {
+        'shopper_assigned': ['shopping'],
+        'shopping': ['ready_for_pickup'],
+      };
+
+      // Find the custom user
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: user.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can update order status');
+      }
+
+      // Find the order
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['shopper'],
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      // Verify this shopper owns the order
+      if (order.shopper?.id !== customUser.id) {
+        return ctx.forbidden('You are not assigned to this order');
+      }
+
+      // Validate status transition
+      const allowed = allowedTransitions[order.status];
+      if (!allowed || !allowed.includes(status)) {
+        return ctx.badRequest(`Cannot transition from '${order.status}' to '${status}'`);
+      }
+
+      // Build update data with timestamps
+      const updateData: any = { status };
+      if (status === 'shopping') updateData.shopping_started_at = new Date();
+      if (status === 'ready_for_pickup') updateData.shopping_completed_at = new Date();
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: updateData,
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Update shopper status error:', error);
+      ctx.throw(500, 'Failed to update order status');
+    }
+  },
+
   async createGuestOrder(ctx: any) {
     try {
       const { phone, address_line, city, landmark, subtotal, service_fee, delivery_fee, total } =

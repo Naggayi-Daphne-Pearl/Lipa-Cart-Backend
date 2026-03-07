@@ -453,4 +453,113 @@ export default {
       ctx.throw(400, errorMsg);
     }
   },
+
+  // Update user profile (riders, shoppers, customers)
+  updateUser: async (ctx: any) => {
+    try {
+      // Manual JWT verification since we disabled Strapi's auth middleware
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
+        return ctx.unauthorized('No authorization token provided');
+      }
+
+      const token = authHeader.slice(7);
+      let user: any;
+      try {
+        user = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch (error) {
+        return ctx.unauthorized('Invalid or expired token');
+      }
+
+      // Get admin user from Strapi's users-permissions
+      const authUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({
+          where: { id: user.id },
+          populate: { role: true },
+        });
+
+      if (authUser?.role?.type !== 'admin') {
+        return ctx.forbidden('Admin access required');
+      }
+
+      const { userId } = ctx.params;
+      const { name, phone, email, vehicle_type, vehicle_plate, license_number, business_name } = ctx.request.body;
+
+      // Find the user by documentId (UUID string from route param)
+      const userToUpdate = await strapi.query('api::user.user').findOne({
+        where: { documentId: userId },
+      });
+
+      if (!userToUpdate) {
+        return ctx.notFound('User not found');
+      }
+
+      // Build update data - only include fields that are provided
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (phone !== undefined) updateData.phone = phone;
+      if (email !== undefined) updateData.email = email;
+
+      // Update the user using the internal id
+      const updatedUser = await strapi.entityService.update('api::user.user', userToUpdate.id, {
+        data: updateData,
+      });
+
+      // Update role-specific profile if needed
+      if (userToUpdate.user_type === 'rider') {
+        const rider = await strapi.query('api::rider.rider').findOne({
+          where: { user: userToUpdate.id },
+        });
+
+        if (rider) {
+          const riderUpdateData: any = {};
+          if (vehicle_type !== undefined) riderUpdateData.vehicle_type = vehicle_type;
+          if (vehicle_plate !== undefined) riderUpdateData.vehicle_plate = vehicle_plate;
+          if (license_number !== undefined) riderUpdateData.license_number = license_number;
+
+          if (Object.keys(riderUpdateData).length > 0) {
+            await strapi.entityService.update('api::rider.rider', rider.id, {
+              data: riderUpdateData,
+            });
+          }
+        }
+      }
+
+      if (userToUpdate.user_type === 'shopper') {
+        const shopper = await strapi.query('api::shopper.shopper').findOne({
+          where: { user: userToUpdate.id },
+        });
+
+        if (shopper) {
+          const shopperUpdateData: any = {};
+          if (business_name !== undefined) shopperUpdateData.business_name = business_name;
+
+          if (Object.keys(shopperUpdateData).length > 0) {
+            await strapi.entityService.update('api::shopper.shopper', shopper.id, {
+              data: shopperUpdateData,
+            });
+          }
+        }
+      }
+
+      ctx.body = {
+        success: true,
+        message: 'User profile updated successfully',
+        user: {
+          id: updatedUser.documentId,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          email: updatedUser.email,
+        },
+      };
+    } catch (error) {
+      console.error('Error updating user:', error);
+      if (error.status) {
+        ctx.throw(error.status, error.message);
+      } else {
+        ctx.throw(400, error.message || 'Failed to update user');
+      }
+    }
+  },
 } as any;

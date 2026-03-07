@@ -962,8 +962,10 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     face_photo: Schema.Attribute.Media<'images'>;
+    face_photo_url: Schema.Attribute.String;
     id_number: Schema.Attribute.String;
     id_photo: Schema.Attribute.Media<'images'>;
+    id_photo_url: Schema.Attribute.String;
     is_online: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     kyc_rejection_reason: Schema.Attribute.String;

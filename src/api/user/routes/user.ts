@@ -17,6 +17,14 @@ export default {
     },
     {
       method: 'PUT',
+      path: '/admin/users/:userId',
+      handler: 'admin.updateUser',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'PUT',
       path: '/admin/users/:userId/role',
       handler: 'admin.updateRole',
       config: {

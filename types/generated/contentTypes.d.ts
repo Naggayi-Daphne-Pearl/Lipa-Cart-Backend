@@ -629,6 +629,7 @@ export interface ApiOrderItemOrderItem extends Struct.CollectionTypeSchema {
     product_name: Schema.Attribute.String & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    shopper_notes: Schema.Attribute.Text;
     special_instructions: Schema.Attribute.Text;
     substitute_for_item: Schema.Attribute.Relation<
       'oneToOne',
@@ -680,6 +681,9 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
     payment_confirmed_at: Schema.Attribute.DateTime;
+    payment_method: Schema.Attribute.Enumeration<
+      ['mobileMoney', 'card', 'cashOnDelivery']
+    >;
     payments: Schema.Attribute.Relation<'oneToMany', 'api::payment.payment'>;
     picked_up_at: Schema.Attribute.DateTime;
     publishedAt: Schema.Attribute.DateTime;
@@ -920,13 +924,26 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     current_gps_lat: Schema.Attribute.Decimal;
     current_gps_lng: Schema.Attribute.Decimal;
+    emergency_contact_name: Schema.Attribute.String;
+    emergency_contact_phone: Schema.Attribute.String;
+    face_photo_url: Schema.Attribute.String;
+    id_number: Schema.Attribute.String;
+    id_photo_url: Schema.Attribute.String;
     is_online: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    kyc_rejection_reason: Schema.Attribute.String;
+    kyc_reviewed_at: Schema.Attribute.DateTime;
+    kyc_status: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'not_submitted'>;
+    kyc_submitted_at: Schema.Attribute.DateTime;
     license_number: Schema.Attribute.String;
     license_photo: Schema.Attribute.Media<'images'>;
+    license_photo_url: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::rider.rider'> &
       Schema.Attribute.Private;
+    mobile_money_number: Schema.Attribute.String;
+    mobile_money_provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     rating: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_deliveries_completed: Schema.Attribute.Integer &

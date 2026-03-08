@@ -3,31 +3,21 @@ import { factories } from '@strapi/strapi';
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   async find(ctx: any) {
     try {
-      console.log('DEBUG: Finding orders with query:', ctx.query);
+      console.log('DEBUG: Finding orders with query:', JSON.stringify(ctx.query));
 
-      // Ensure order_items are always populated
-      if (!ctx.query.populate) {
-        ctx.query.populate = {};
-      }
-
-      // If populate is a string (like 'order_items'), convert to object
-      if (typeof ctx.query.populate === 'string') {
-        const populateStr = ctx.query.populate;
-        ctx.query.populate = {};
-        // Parse the populate string if it's comma-separated
-        populateStr.split(',').forEach((field: string) => {
-          ctx.query.populate[field] = true;
-        });
-      }
-
-      // Always include order_items in populate
-      if (typeof ctx.query.populate === 'object') {
-        ctx.query.populate.order_items = {
+      // Override populate to always include all needed relations
+      // This avoids complex query string parsing issues with Strapi v5
+      ctx.query.populate = {
+        order_items: {
           populate: {
-            product: true,  // Just populate the product relation, don't specify fields
+            product: true,
           },
-        };
-      }
+        },
+        delivery_address: true,
+        customer: true,
+        shopper: true,
+        rider: true,
+      };
 
       console.log('DEBUG: Modified populate query:', JSON.stringify(ctx.query.populate));
 
@@ -131,14 +121,28 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async claimOrder(ctx: any) {
     try {
-      const user = ctx.state.user;
-      if (!user) return ctx.unauthorized('Authentication required');
+      // Manual JWT verification (Strapi middleware doesn't work on custom routes)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
 
       const { id } = ctx.params; // documentId of the order
 
       // Find the custom user (shopper)
       const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: user.username },
+        where: { phone: strapiUser.username },
       });
 
       if (!customUser || customUser.user_type !== 'shopper') {
@@ -187,8 +191,22 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async updateShopperStatus(ctx: any) {
     try {
-      const user = ctx.state.user;
-      if (!user) return ctx.unauthorized('Authentication required');
+      // Manual JWT verification
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
 
       const { id } = ctx.params;
       const { status } = ctx.request.body;
@@ -200,7 +218,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       // Find the custom user
       const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: user.username },
+        where: { phone: strapiUser.username },
       });
 
       if (!customUser || customUser.user_type !== 'shopper') {
@@ -244,6 +262,223 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     } catch (error) {
       console.error('Update shopper status error:', error);
       ctx.throw(500, 'Failed to update order status');
+    }
+  },
+
+  /**
+   * Admin confirms payment for a pending order
+   * PATCH /api/orders/:id/confirm-payment
+   */
+  async confirmPayment(ctx: any) {
+    try {
+      // Manual JWT verification
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
+
+      const { id } = ctx.params; // documentId of the order
+
+      // Verify the user is an admin
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'admin') {
+        return ctx.forbidden('Only admins can confirm payments');
+      }
+
+      // Find the order
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'pending') {
+        return ctx.badRequest(`Order status is '${order.status}', expected 'pending'`);
+      }
+
+      // Confirm payment
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          status: 'payment_confirmed',
+          payment_confirmed_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Confirm payment error:', error);
+      ctx.throw(500, 'Failed to confirm payment');
+    }
+  },
+
+  /**
+   * Rider claims an order ready for pickup
+   * POST /api/orders/:id/claim-delivery
+   */
+  async claimDelivery(ctx: any) {
+    try {
+      // Manual JWT verification
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
+
+      const { id } = ctx.params; // documentId of the order
+
+      // Find the custom user (rider)
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'rider') {
+        return ctx.forbidden('Only riders can claim deliveries');
+      }
+
+      // Find the order
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'ready_for_pickup') {
+        return ctx.badRequest('Order is not ready for pickup');
+      }
+
+      if (order.rider) {
+        return ctx.badRequest('Order is already assigned to a rider');
+      }
+
+      // Assign rider and update status
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          rider: customUser.id,
+          status: 'rider_assigned',
+          rider_assigned_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Claim delivery error:', error);
+      ctx.throw(500, 'Failed to claim delivery');
+    }
+  },
+
+  /**
+   * Rider updates delivery status (in_transit, delivered)
+   * PATCH /api/orders/:id/rider-status
+   */
+  async updateRiderStatus(ctx: any) {
+    try {
+      // Manual JWT verification
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
+
+      const { id } = ctx.params;
+      const { status } = ctx.request.body;
+
+      const allowedTransitions: Record<string, string[]> = {
+        'rider_assigned': ['in_transit'],
+        'in_transit': ['delivered'],
+      };
+
+      // Find the custom user
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'rider') {
+        return ctx.forbidden('Only riders can update delivery status');
+      }
+
+      // Find the order
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['rider'],
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      // Verify this rider owns the order
+      if (order.rider?.id !== customUser.id) {
+        return ctx.forbidden('You are not assigned to this delivery');
+      }
+
+      // Validate status transition
+      const allowed = allowedTransitions[order.status];
+      if (!allowed || !allowed.includes(status)) {
+        return ctx.badRequest(`Cannot transition from '${order.status}' to '${status}'`);
+      }
+
+      // Build update data with timestamps
+      const updateData: any = { status };
+      if (status === 'in_transit') updateData.picked_up_at = new Date();
+      if (status === 'delivered') updateData.delivered_at = new Date();
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: updateData,
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Update rider status error:', error);
+      ctx.throw(500, 'Failed to update delivery status');
     }
   },
 

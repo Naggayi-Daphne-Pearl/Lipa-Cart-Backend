@@ -7,18 +7,38 @@ export default {
       handler: 'order.createGuestOrder',
       config: { auth: false, policies: [], middlewares: [] },
     },
-    // Shopper workflow endpoints
+    // Shopper workflow endpoints (auth: false — JWT verified manually in handler)
     {
       method: 'POST',
       path: '/orders/:id/claim',
       handler: 'order.claimOrder',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
     },
     {
       method: 'PATCH',
       path: '/orders/:id/shopper-status',
       handler: 'order.updateShopperStatus',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    // Rider workflow endpoints (auth: false — JWT verified manually in handler)
+    {
+      method: 'POST',
+      path: '/orders/:id/claim-delivery',
+      handler: 'order.claimDelivery',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'PATCH',
+      path: '/orders/:id/rider-status',
+      handler: 'order.updateRiderStatus',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    // Admin confirms payment (auth: false — JWT verified manually in handler)
+    {
+      method: 'PATCH',
+      path: '/orders/:id/confirm-payment',
+      handler: 'order.confirmPayment',
+      config: { auth: false, policies: [], middlewares: [] },
     },
     // Standard core CRUD routes (authenticated by default)
     { method: 'GET', path: '/orders', handler: 'order.find' },

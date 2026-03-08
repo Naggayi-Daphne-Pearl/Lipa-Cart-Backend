@@ -35,6 +35,31 @@
       "multiple": false,
       "allowedTypes": ["images"]
     },
+    "license_photo_url": {
+      "type": "string"
+    },
+    "id_number": {
+      "type": "string"
+    },
+    "id_photo_url": {
+      "type": "string"
+    },
+    "face_photo_url": {
+      "type": "string"
+    },
+    "kyc_status": {
+      "type": "string",
+      "default": "not_submitted"
+    },
+    "kyc_submitted_at": {
+      "type": "datetime"
+    },
+    "kyc_reviewed_at": {
+      "type": "datetime"
+    },
+    "kyc_rejection_reason": {
+      "type": "string"
+    },
     "is_verified": {
       "type": "boolean",
       "default": false
@@ -65,6 +90,12 @@
       "type": "decimal",
       "default": 0
     },
+    "mobile_money_provider": {
+      "type": "string"
+    },
+    "mobile_money_number": {
+      "type": "string"
+    },
     "bank_account_name": {
       "type": "string"
     },
@@ -72,6 +103,12 @@
       "type": "string"
     },
     "bank_name": {
+      "type": "string"
+    },
+    "emergency_contact_name": {
+      "type": "string"
+    },
+    "emergency_contact_phone": {
       "type": "string"
     }
   }

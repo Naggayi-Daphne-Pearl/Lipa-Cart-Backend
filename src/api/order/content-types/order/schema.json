@@ -82,6 +82,14 @@
     "estimated_total": {
       "type": "decimal"
     },
+    "payment_method": {
+      "type": "enumeration",
+      "enum": [
+        "mobileMoney",
+        "card",
+        "cashOnDelivery"
+      ]
+    },
     "special_instructions": {
       "type": "text"
     },

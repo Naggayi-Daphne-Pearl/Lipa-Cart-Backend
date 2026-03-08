@@ -47,6 +47,9 @@
     "special_instructions": {
       "type": "text"
     },
+    "shopper_notes": {
+      "type": "text"
+    },
     "is_substituted": {
       "type": "boolean",
       "default": false

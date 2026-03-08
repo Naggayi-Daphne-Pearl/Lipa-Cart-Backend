@@ -25,12 +25,10 @@ export default {
         return ctx.badRequest('Password must be at least 6 characters');
       }
 
-      // Prevent signup for admin and rider roles (only allow customer and shopper)
+      // Prevent signup for admin role only
       const normalizedUserType = (userType || 'customer').toLowerCase();
-      if (normalizedUserType === 'admin' || normalizedUserType === 'rider') {
-        return ctx.forbidden(
-          `${normalizedUserType.charAt(0).toUpperCase() + normalizedUserType.slice(1)} accounts cannot be created via signup. Please contact the administrator.`
-        );
+      if (normalizedUserType === 'admin') {
+        return ctx.forbidden('Admin accounts cannot be created via signup. Please contact the administrator.');
       }
 
       // Check if user already exists
@@ -104,6 +102,23 @@ export default {
         }
       }
 
+      // Create rider profile if user type is rider
+      let riderId = null;
+      if (normalizedUserType === 'rider') {
+        try {
+          const rider: any = await strapi.entityService.create('api::rider.rider', {
+            data: {
+              user: customUser.documentId,
+              kyc_status: 'not_submitted',
+            },
+          });
+          riderId = rider.documentId ?? String(rider.id);
+          kycStatus = rider.kyc_status ?? 'not_submitted';
+        } catch (err) {
+          console.error('Failed to create rider record:', err);
+        }
+      }
+
       // Generate JWT
       const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
         id: authUser.id,
@@ -120,7 +135,8 @@ export default {
           user_type: customUser.user_type,
           profile_photo: customUser.profile_photo?.url ?? null,
           customer_id: customerId,
-          ...(userType === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
+          ...(normalizedUserType === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
+          ...(normalizedUserType === 'rider' && { rider_id: riderId, kyc_status: kycStatus }),
         },
       };
     } catch (error) {
@@ -252,6 +268,50 @@ export default {
         }
       }
 
+      // Get rider ID and KYC status if user is a rider
+      let riderId = null;
+      let riderKycStatus = 'not_submitted';
+      if (user.user_type === 'rider') {
+        try {
+          let rider: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+              [user.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              rider = await strapi.db.query('api::rider.rider').findOne({
+                where: { id: rows[0].rider_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('login - rider link table query failed:', linkErr?.message);
+          }
+
+          if (!rider) {
+            const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            rider = allRiders.find((r: any) =>
+              r.user?.id === user.id ||
+              r.user?.documentId === user.documentId
+            );
+          }
+
+          if (rider) {
+            riderId = rider.documentId ?? String(rider.id);
+            riderKycStatus = rider.kyc_status ?? 'not_submitted';
+            if (rider.is_verified === true && riderKycStatus !== 'approved') {
+              riderKycStatus = 'approved';
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch rider record:', err);
+        }
+      }
+
       // Generate JWT
       const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
         id: authUser.id,
@@ -269,6 +329,7 @@ export default {
           profile_photo: user.profile_photo?.url ?? null,
           customer_id: customerId,
           ...(user.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
+          ...(user.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus }),
         },
       };
     } catch (error) {
@@ -350,6 +411,50 @@ export default {
         }
       }
 
+      // Get rider ID and KYC status if user is a rider
+      let riderId = null;
+      let riderKycStatus = 'not_submitted';
+      if (customUser?.user_type === 'rider') {
+        try {
+          let rider: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+              [customUser.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              rider = await strapi.db.query('api::rider.rider').findOne({
+                where: { id: rows[0].rider_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('refresh - rider link table query failed:', linkErr?.message);
+          }
+
+          if (!rider) {
+            const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            rider = allRiders.find((r: any) =>
+              r.user?.id === customUser.id ||
+              r.user?.documentId === customUser.documentId
+            );
+          }
+
+          if (rider) {
+            riderId = rider.documentId ?? String(rider.id);
+            riderKycStatus = rider.kyc_status ?? 'not_submitted';
+            if (rider.is_verified === true && riderKycStatus !== 'approved') {
+              riderKycStatus = 'approved';
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch rider record:', err);
+        }
+      }
+
       ctx.body = {
         jwt,
         user: customUser
@@ -363,6 +468,7 @@ export default {
               profile_photo: customUser.profile_photo?.url ?? null,
               customer_id: customerId,
               ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
+              ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus }),
             }
           : {
               id: user.id,
@@ -455,6 +561,53 @@ export default {
         }
       }
 
+      // Get rider ID and KYC status if user is a rider
+      let riderId = null;
+      let riderKycStatus = 'not_submitted';
+      if (customUser.user_type === 'rider') {
+        try {
+          let rider: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+              [customUser.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              rider = await strapi.db.query('api::rider.rider').findOne({
+                where: { id: rows[0].rider_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('me - rider link table query failed:', linkErr?.message);
+          }
+
+          if (!rider) {
+            const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            rider = allRiders.find((r: any) =>
+              r.user?.id === customUser.id ||
+              r.user?.documentId === customUser.documentId
+            );
+          }
+
+          if (rider) {
+            riderId = rider.documentId ?? String(rider.id);
+            riderKycStatus = rider.kyc_status ?? 'not_submitted';
+            if (rider.is_verified === true && riderKycStatus !== 'approved') {
+              riderKycStatus = 'approved';
+            }
+            console.log('me - rider found:', { id: rider.id, documentId: rider.documentId, kyc_status: riderKycStatus, is_verified: rider.is_verified });
+          } else {
+            console.log('me - no rider record found for user:', customUser.id);
+          }
+        } catch (err) {
+          console.error('Failed to fetch rider record:', err);
+        }
+      }
+
       ctx.body = {
         id: customUser.id,
         document_id: customUser.documentId,
@@ -465,6 +618,7 @@ export default {
         profile_photo: customUser.profile_photo?.url ?? null,
         customer_id: customUser.customer?.id ?? null,
         ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
+        ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus }),
       };
     } catch (error) {
       console.error('Get user profile error:', error);

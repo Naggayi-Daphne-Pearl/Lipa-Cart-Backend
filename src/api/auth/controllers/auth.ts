@@ -212,12 +212,40 @@ export default {
       let kycStatus = 'not_submitted';
       if (user.user_type === 'shopper') {
         try {
-          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
-            where: { user: user.id },
-          });
+          let shopper: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+              [user.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              shopper = await strapi.db.query('api::shopper.shopper').findOne({
+                where: { id: rows[0].shopper_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('login - link table query failed:', linkErr?.message);
+          }
+
+          if (!shopper) {
+            const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            shopper = allShoppers.find((s: any) =>
+              s.user?.id === user.id ||
+              s.user?.documentId === user.documentId
+            );
+          }
+
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
             kycStatus = shopper.kyc_status ?? 'not_submitted';
+            // If admin manually set is_verified=true via Strapi panel, treat as approved
+            if (shopper.is_verified === true && kycStatus !== 'approved') {
+              kycStatus = 'approved';
+            }
           }
         } catch (err) {
           console.error('Failed to fetch shopper record:', err);
@@ -282,12 +310,40 @@ export default {
       let kycStatus = 'not_submitted';
       if (customUser?.user_type === 'shopper') {
         try {
-          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
-            where: { user: customUser.id },
-          });
+          let shopper: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+              [customUser.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              shopper = await strapi.db.query('api::shopper.shopper').findOne({
+                where: { id: rows[0].shopper_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('refresh - link table query failed:', linkErr?.message);
+          }
+
+          if (!shopper) {
+            const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            shopper = allShoppers.find((s: any) =>
+              s.user?.id === customUser.id ||
+              s.user?.documentId === customUser.documentId
+            );
+          }
+
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
             kycStatus = shopper.kyc_status ?? 'not_submitted';
+            // If admin manually set is_verified=true via Strapi panel, treat as approved
+            if (shopper.is_verified === true && kycStatus !== 'approved') {
+              kycStatus = 'approved';
+            }
           }
         } catch (err) {
           console.error('Failed to fetch shopper record:', err);
@@ -354,12 +410,45 @@ export default {
       let kycStatus = 'not_submitted';
       if (customUser.user_type === 'shopper') {
         try {
-          const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
-            where: { user: customUser.id },
-          });
+          // Strapi v5 stores relations in link tables, so query the link table directly
+          let shopper: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+              [customUser.id]
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              shopper = await strapi.db.query('api::shopper.shopper').findOne({
+                where: { id: rows[0].shopper_id },
+              });
+            }
+          } catch (linkErr: any) {
+            console.log('me - link table query failed:', linkErr?.message);
+          }
+
+          // Fallback: query all shoppers with populate and match
+          if (!shopper) {
+            const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
+            shopper = allShoppers.find((s: any) =>
+              s.user?.id === customUser.id ||
+              s.user?.documentId === customUser.documentId
+            );
+          }
+
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
             kycStatus = shopper.kyc_status ?? 'not_submitted';
+            // If admin manually set is_verified=true via Strapi panel, treat as approved
+            if (shopper.is_verified === true && kycStatus !== 'approved') {
+              kycStatus = 'approved';
+            }
+            console.log('me - shopper found:', { id: shopper.id, documentId: shopper.documentId, kyc_status: kycStatus, is_verified: shopper.is_verified });
+          } else {
+            console.log('me - no shopper record found for user:', customUser.id);
           }
         } catch (err) {
           console.error('Failed to fetch shopper record:', err);

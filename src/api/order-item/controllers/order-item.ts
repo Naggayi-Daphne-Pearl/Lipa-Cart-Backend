@@ -104,13 +104,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
   async bulkCreate(ctx: any) {
     try {
-      // Check authentication
-      if (!ctx.state.user) {
-        console.error('ERROR: Unauthorized - no user in context');
-        return ctx.unauthorized('Authentication required');
-      }
-
-      console.log(`\nBulk create request from user: ${ctx.state.user.id}`);
+      console.log(`\nBulk create request received (user: ${ctx.state?.user?.id ?? 'anonymous'})`);
 
       const { items } = ctx.request.body;
 
@@ -135,11 +129,31 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           console.log(`  Product ID: ${itemData.product}`);
           console.log(`  Quantity: ${itemData.quantity} ${itemData.unit}`);
 
-          const orderItem = await strapi.entityService.create('api::order-item.order-item', {
-            data: itemData,
+          // Separate relation fields from scalar fields
+          const { order, product, ...scalarData } = itemData;
+
+          // Build create payload with proper Strapi v5 relation syntax
+          const createData: any = {
+            ...scalarData,
+          };
+
+          // Connect order relation using documentId
+          if (order) {
+            createData.order = { connect: [{ documentId: order }] };
+          }
+
+          // Connect product relation using documentId (if provided)
+          if (product) {
+            createData.product = { connect: [{ documentId: product }] };
+          }
+
+          console.log(`  Create payload:`, JSON.stringify(createData, null, 2));
+
+          const orderItem = await strapi.documents('api::order-item.order-item').create({
+            data: createData,
           });
 
-          console.log(`  ✓ Created with ID: ${orderItem.id}`);
+          console.log(`  ✓ Created with ID: ${orderItem.id}, documentId: ${orderItem.documentId}`);
           createdItems.push(orderItem);
         } catch (error) {
           console.error(`  ✗ FAILED:`, error.message);

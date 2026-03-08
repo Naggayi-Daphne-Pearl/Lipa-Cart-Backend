@@ -530,7 +530,7 @@ export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.Text;
-    image: Schema.Attribute.Media<'images'>;
+    image: Schema.Attribute.String;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -781,7 +781,7 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     description: Schema.Attribute.Text;
     estimated_price: Schema.Attribute.Decimal & Schema.Attribute.Required;
-    image: Schema.Attribute.Media<'images'>;
+    image: Schema.Attribute.String;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -869,7 +869,7 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
-    author_image: Schema.Attribute.Media<'images'>;
+    author_image: Schema.Attribute.String;
     author_name: Schema.Attribute.String;
     cook_time: Schema.Attribute.Integer;
     createdAt: Schema.Attribute.DateTime;
@@ -877,7 +877,7 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     description: Schema.Attribute.RichText;
     difficulty: Schema.Attribute.Enumeration<['easy', 'medium', 'hard']>;
-    image: Schema.Attribute.Media<'images'>;
+    image: Schema.Attribute.String;
     ingredients: Schema.Attribute.Component<'recipe.ingredient', true>;
     instructions: Schema.Attribute.Component<'recipe.instruction', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;

@@ -214,7 +214,6 @@ export default {
         try {
           const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
             where: { user: user.id },
-            select: ['id', 'documentId', 'kyc_status'],
           });
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
@@ -285,7 +284,6 @@ export default {
         try {
           const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
             where: { user: customUser.id },
-            select: ['id', 'documentId', 'kyc_status'],
           });
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
@@ -358,7 +356,6 @@ export default {
         try {
           const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
             where: { user: customUser.id },
-            select: ['id', 'documentId', 'kyc_status'],
           });
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);

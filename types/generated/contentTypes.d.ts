@@ -961,6 +961,8 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    emergency_contact_name: Schema.Attribute.String;
+    emergency_contact_phone: Schema.Attribute.String;
     face_photo: Schema.Attribute.Media<'images'>;
     face_photo_url: Schema.Attribute.String;
     id_number: Schema.Attribute.String;
@@ -984,6 +986,11 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     market_gps_lat: Schema.Attribute.Decimal;
     market_gps_lng: Schema.Attribute.Decimal;
     market_location: Schema.Attribute.String;
+    mobile_money_number: Schema.Attribute.String;
+    mobile_money_provider: Schema.Attribute.Enumeration<
+      ['MTN Mobile Money', 'Airtel Money']
+    > &
+      Schema.Attribute.DefaultTo<'MTN Mobile Money'>;
     publishedAt: Schema.Attribute.DateTime;
     rating: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_earnings: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;

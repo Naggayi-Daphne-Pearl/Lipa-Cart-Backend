@@ -24,7 +24,12 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         return ctx.unauthorized('Authentication required');
       }
 
-      const { id_number, id_photo_url, face_photo_url } = ctx.request.body;
+      const {
+        id_number, id_photo_url, face_photo_url,
+        mobile_money_provider, mobile_money_number,
+        bank_name, bank_account_name, bank_account_number,
+        emergency_contact_name, emergency_contact_phone,
+      } = ctx.request.body;
 
       // Validate required fields
       if (!id_number || !id_photo_url || !face_photo_url) {
@@ -108,16 +113,26 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       const shopperDocId = shopper.documentId || shopper.id;
       console.log('KYC submit - updating shopper:', { id: shopper.id, documentId: shopperDocId });
 
+      // Build update data with optional payment & contact fields
+      const kycUpdateData: any = {
+        id_number,
+        id_photo_url,
+        face_photo_url,
+        kyc_status: 'pending_review',
+        kyc_submitted_at: new Date(),
+      };
+      if (mobile_money_provider) kycUpdateData.mobile_money_provider = mobile_money_provider;
+      if (mobile_money_number) kycUpdateData.mobile_money_number = mobile_money_number;
+      if (bank_name) kycUpdateData.bank_name = bank_name;
+      if (bank_account_name) kycUpdateData.bank_account_name = bank_account_name;
+      if (bank_account_number) kycUpdateData.bank_account_number = bank_account_number;
+      if (emergency_contact_name) kycUpdateData.emergency_contact_name = emergency_contact_name;
+      if (emergency_contact_phone) kycUpdateData.emergency_contact_phone = emergency_contact_phone;
+
       try {
         const updated = await strapi.documents('api::shopper.shopper').update({
           documentId: shopperDocId,
-          data: {
-            id_number,
-            id_photo_url,
-            face_photo_url,
-            kyc_status: 'pending_review',
-            kyc_submitted_at: new Date(),
-          } as any,
+          data: kycUpdateData,
         });
 
         ctx.body = {
@@ -133,13 +148,7 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         // Fallback: try entityService.update with numeric id
         try {
           const updated = await strapi.entityService.update('api::shopper.shopper', shopper.id, {
-            data: {
-              id_number,
-              id_photo_url,
-              face_photo_url,
-              kyc_status: 'pending_review',
-              kyc_submitted_at: new Date(),
-            } as any,
+            data: kycUpdateData,
           });
 
           ctx.body = {

@@ -17,7 +17,7 @@ export default {
       method: 'POST',
       path: '/order-items/bulk',
       handler: 'order-item.bulkCreate',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false },
     },
   ],
 };

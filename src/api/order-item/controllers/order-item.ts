@@ -104,74 +104,72 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
   async bulkCreate(ctx: any) {
     try {
-      console.log(`\nBulk create request received (user: ${ctx.state?.user?.id ?? 'anonymous'})`);
+      console.log(`\nBulk create request received`);
 
       const { items } = ctx.request.body;
 
       if (!items || !Array.isArray(items)) {
-        console.error('ERROR: Invalid request - items must be an array');
         return ctx.badRequest('items array is required');
       }
 
-      console.log(`\n${'='.repeat(60)}`);
       console.log(`BULK CREATE: Processing ${items.length} order items`);
-      console.log(`${'='.repeat(60)}`);
 
-      // Create all order items
       const createdItems = [];
       const failedItems = [];
 
       for (let index = 0; index < items.length; index++) {
         const itemData = items[index];
         try {
-          console.log(`\n[${index + 1}/${items.length}] Creating order item:`);
-          console.log(`  Order ID: ${itemData.order}`);
-          console.log(`  Product ID: ${itemData.product}`);
-          console.log(`  Quantity: ${itemData.quantity} ${itemData.unit}`);
+          const { order: orderDocId, product: productDocId, ...scalarData } = itemData;
 
-          // Separate relation fields from scalar fields
-          const { order, product, ...scalarData } = itemData;
+          console.log(`[${index + 1}/${items.length}] order=${orderDocId}, product=${productDocId}, qty=${scalarData.quantity}`);
 
-          // Build create payload with proper Strapi v5 relation syntax
-          const createData: any = {
-            ...scalarData,
-          };
-
-          // Connect order relation using documentId
-          if (order) {
-            createData.order = { connect: [{ documentId: order }] };
+          // Resolve order documentId to numeric ID
+          let orderId = null;
+          if (orderDocId) {
+            const orderRecord: any = await strapi.db.query('api::order.order').findOne({
+              where: { documentId: orderDocId },
+            });
+            if (orderRecord) {
+              orderId = orderRecord.id;
+              console.log(`  Resolved order documentId ${orderDocId} -> id ${orderId}`);
+            } else {
+              console.error(`  Order not found for documentId: ${orderDocId}`);
+            }
           }
 
-          // Connect product relation using documentId (if provided)
-          if (product) {
-            createData.product = { connect: [{ documentId: product }] };
+          // Resolve product documentId to numeric ID
+          let productId = null;
+          if (productDocId) {
+            const productRecord: any = await strapi.db.query('api::product.product').findOne({
+              where: { documentId: productDocId },
+            });
+            if (productRecord) {
+              productId = productRecord.id;
+              console.log(`  Resolved product documentId ${productDocId} -> id ${productId}`);
+            } else {
+              console.log(`  Product not found for documentId: ${productDocId} (skipping link)`);
+            }
           }
 
-          console.log(`  Create payload:`, JSON.stringify(createData, null, 2));
-
-          const orderItem = await strapi.documents('api::order-item.order-item').create({
-            data: createData,
+          // Create using db.query with numeric IDs for relations
+          const orderItem = await strapi.entityService.create('api::order-item.order-item', {
+            data: {
+              ...scalarData,
+              order: orderId,
+              product: productId,
+            },
           });
 
-          console.log(`  ✓ Created with ID: ${orderItem.id}, documentId: ${orderItem.documentId}`);
+          console.log(`  ✓ Created order item id=${orderItem.id}`);
           createdItems.push(orderItem);
         } catch (error) {
           console.error(`  ✗ FAILED:`, error.message);
-          console.error(`     Full error:`, error);
-          failedItems.push({
-            item: itemData,
-            error: error.message,
-          });
+          failedItems.push({ item: itemData, error: error.message });
         }
       }
 
-      console.log(`\n${'='.repeat(60)}`);
       console.log(`RESULT: ${createdItems.length} created, ${failedItems.length} failed`);
-      console.log(`${'='.repeat(60)}\n`);
-
-      if (failedItems.length > 0) {
-        console.error('Failed items:', JSON.stringify(failedItems, null, 2));
-      }
 
       ctx.body = {
         data: createdItems,
@@ -181,7 +179,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         },
       };
     } catch (error) {
-      console.error('\nERROR: Bulk create failed:', error);
+      console.error('ERROR: Bulk create failed:', error);
       ctx.throw(500, 'Failed to create order items in bulk');
     }
   },

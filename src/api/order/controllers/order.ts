@@ -229,6 +229,77 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
   },
 
   /**
+   * Shopper unclaims/cancels a claimed order (before shopping starts)
+   * DELETE /api/orders/:id/claim
+   */
+  async unclaimOrder(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
+
+      const { id } = ctx.params;
+
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can unclaim orders');
+      }
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'shopper_assigned') {
+        return ctx.badRequest('Can only unclaim orders that have not started shopping yet');
+      }
+
+      // Reset order status
+      await strapi.db.connection('orders')
+        .where({ id: order.id })
+        .update({
+          status: 'payment_confirmed',
+          shopper_assigned_at: null,
+          updated_at: new Date().toISOString(),
+        });
+
+      // Remove shopper link
+      await strapi.db.connection('orders_shopper_lnk')
+        .where({ order_id: order.id })
+        .delete();
+
+      const updated = await strapi.entityService.findOne('api::order.order', order.id, {
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Unclaim order error:', error);
+      ctx.throw(500, 'Failed to unclaim order');
+    }
+  },
+
+  /**
    * Shopper updates order status (shopping, ready_for_pickup)
    * PATCH /api/orders/:id/shopper-status
    */
@@ -560,6 +631,67 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           shopper: true,
         },
       });
+
+      // When delivered, update shopper and rider stats
+      if (status === 'delivered') {
+        const commission = (order.total || 0) * 0.10; // 10% commission
+
+        // Update shopper stats
+        try {
+          const shopperLink: any = await strapi.db.connection.raw(
+            `SELECT user_id FROM orders_shopper_lnk WHERE order_id = ?`, [order.id]
+          );
+          const shopperRows = shopperLink?.rows || shopperLink;
+          if (shopperRows && shopperRows.length > 0) {
+            const shopperUserId = shopperRows[0].user_id;
+            const sLink: any = await strapi.db.connection.raw(
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`, [shopperUserId]
+            );
+            const sRows = sLink?.rows || sLink;
+            if (sRows && sRows.length > 0) {
+              const shopperRecord: any = await strapi.db.query('api::shopper.shopper').findOne({
+                where: { id: sRows[0].shopper_id },
+              });
+              if (shopperRecord) {
+                await strapi.entityService.update('api::shopper.shopper', shopperRecord.id, {
+                  data: {
+                    total_earnings: (shopperRecord.total_earnings || 0) + commission,
+                    total_orders_completed: (shopperRecord.total_orders_completed || 0) + 1,
+                  },
+                });
+                console.log(`Updated shopper ${shopperRecord.id}: +${commission} earnings, +1 completed`);
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error('Failed to update shopper stats:', e?.message);
+        }
+
+        // Update rider stats
+        try {
+          const riderLink: any = await strapi.db.connection.raw(
+            `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`, [customUser.id]
+          );
+          const rRows = riderLink?.rows || riderLink;
+          if (rRows && rRows.length > 0) {
+            const riderRecord: any = await strapi.db.query('api::rider.rider').findOne({
+              where: { id: rRows[0].rider_id },
+            });
+            if (riderRecord) {
+              const deliveryFee = order.delivery_fee || 0;
+              await strapi.entityService.update('api::rider.rider', riderRecord.id, {
+                data: {
+                  total_earnings: (riderRecord.total_earnings || 0) + deliveryFee,
+                  total_deliveries_completed: (riderRecord.total_deliveries_completed || 0) + 1,
+                },
+              });
+              console.log(`Updated rider ${riderRecord.id}: +${deliveryFee} earnings, +1 delivery`);
+            }
+          }
+        } catch (e: any) {
+          console.error('Failed to update rider stats:', e?.message);
+        }
+      }
 
       ctx.body = { data: updated };
     } catch (error) {

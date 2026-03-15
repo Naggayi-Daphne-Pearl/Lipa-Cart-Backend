@@ -514,6 +514,7 @@ export default {
       // Get shopper ID and KYC status if user is a shopper
       let shopperId = null;
       let kycStatus = 'not_submitted';
+      let shopperRecord: any = null;
       if (customUser.user_type === 'shopper') {
         try {
           // Strapi v5 stores relations in link tables, so query the link table directly
@@ -546,6 +547,7 @@ export default {
           }
 
           if (shopper) {
+            shopperRecord = shopper;
             shopperId = shopper.documentId ?? String(shopper.id);
             kycStatus = shopper.kyc_status ?? 'not_submitted';
             // If admin manually set is_verified=true via Strapi panel, treat as approved
@@ -564,6 +566,7 @@ export default {
       // Get rider ID and KYC status if user is a rider
       let riderId = null;
       let riderKycStatus = 'not_submitted';
+      let riderRecord: any = null;
       if (customUser.user_type === 'rider') {
         try {
           let rider: any = null;
@@ -594,6 +597,7 @@ export default {
           }
 
           if (rider) {
+            riderRecord = rider;
             riderId = rider.documentId ?? String(rider.id);
             riderKycStatus = rider.kyc_status ?? 'not_submitted';
             if (rider.is_verified === true && riderKycStatus !== 'approved') {
@@ -617,8 +621,8 @@ export default {
         user_type: customUser.user_type,
         profile_photo: customUser.profile_photo?.url ?? null,
         customer_id: customUser.customer?.id ?? null,
-        ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
-        ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus }),
+        ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus, kyc_rejection_reason: shopperRecord?.kyc_rejection_reason ?? null }),
+        ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus, kyc_rejection_reason: riderRecord?.kyc_rejection_reason ?? null }),
       };
     } catch (error) {
       console.error('Get user profile error:', error);

@@ -15,6 +15,12 @@ export default {
       config: { auth: false, policies: [], middlewares: [] },
     },
     {
+      method: 'DELETE',
+      path: '/orders/:id/claim',
+      handler: 'order.unclaimOrder',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
       method: 'PATCH',
       path: '/orders/:id/shopper-status',
       handler: 'order.updateShopperStatus',

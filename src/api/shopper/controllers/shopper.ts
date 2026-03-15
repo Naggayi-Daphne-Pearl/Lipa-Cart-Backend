@@ -182,14 +182,24 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         return ctx.unauthorized('Authentication required');
       }
       const token = authHeader.slice(7);
+      let reviewUser: any;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        const user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
-        if (!user) {
+        reviewUser = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        if (!reviewUser) {
           return ctx.unauthorized('Authentication required');
         }
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
+      }
+
+      // Verify the user is an admin
+      const adminUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: reviewUser.username },
+      });
+
+      if (!adminUser || adminUser.user_type !== 'admin') {
+        return ctx.forbidden('Only admins can review KYC submissions');
       }
 
       const { id } = ctx.params;

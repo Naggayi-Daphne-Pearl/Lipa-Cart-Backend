@@ -21,7 +21,19 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
    */
   async shopperUpdate(ctx: any) {
     try {
-      if (!ctx.state.user) return ctx.unauthorized('Authentication required');
+      // Manual JWT verification (auth: false on route)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      try {
+        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+        const user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        if (!user) return ctx.unauthorized('User not found');
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
 
       const { id } = ctx.params; // documentId of the order item
       const { found, actual_price } = ctx.request.body;
@@ -57,7 +69,19 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
    */
   async batchUpdate(ctx: any) {
     try {
-      if (!ctx.state.user) return ctx.unauthorized('Authentication required');
+      // Manual JWT verification (auth: false on route)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      try {
+        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+        const user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        if (!user) return ctx.unauthorized('User not found');
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
 
       const { items } = ctx.request.body;
       if (!items || !Array.isArray(items)) {
@@ -69,10 +93,21 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
       for (const itemUpdate of items) {
         try {
-          const { documentId, found, actual_price } = itemUpdate;
-          const item: any = await strapi.db.query('api::order-item.order-item').findOne({
-            where: { documentId },
-          });
+          const { documentId, found, actual_price, shopper_notes } = itemUpdate;
+
+          // Support both documentId (string) and numeric id lookups
+          let item: any = null;
+          const isNumericId = /^\d+$/.test(String(documentId));
+          if (isNumericId) {
+            item = await strapi.db.query('api::order-item.order-item').findOne({
+              where: { id: Number(documentId) },
+            });
+          }
+          if (!item) {
+            item = await strapi.db.query('api::order-item.order-item').findOne({
+              where: { documentId },
+            });
+          }
 
           if (!item) {
             failed.push({ documentId, error: 'Not found' });
@@ -82,6 +117,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           const updateData: any = {};
           if (typeof found === 'boolean') updateData.found = found;
           if (actual_price !== undefined) updateData.actual_price = actual_price;
+          if (shopper_notes !== undefined) updateData.shopper_notes = shopper_notes;
 
           const updated = await strapi.entityService.update('api::order-item.order-item', item.id, {
             data: updateData,

@@ -5,13 +5,13 @@ export default {
       method: 'PATCH',
       path: '/order-items/batch-update',
       handler: 'order-item.batchUpdate',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false },
     },
     {
       method: 'PATCH',
       path: '/order-items/:id/shopper-update',
       handler: 'order-item.shopperUpdate',
-      config: { policies: [], middlewares: [] },
+      config: { auth: false },
     },
     {
       method: 'POST',

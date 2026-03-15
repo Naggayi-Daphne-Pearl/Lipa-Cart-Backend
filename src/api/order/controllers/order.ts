@@ -149,6 +149,35 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.forbidden('Only shoppers can claim orders');
       }
 
+      // Verify shopper KYC is approved before allowing order claims
+      let shopperRecord: any = null;
+      try {
+        const linkResult: any = await strapi.db.connection.raw(
+          `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+          [customUser.id]
+        );
+        const rows = linkResult?.rows || linkResult;
+        if (rows && rows.length > 0) {
+          shopperRecord = await strapi.db.query('api::shopper.shopper').findOne({
+            where: { id: rows[0].shopper_id },
+          });
+        }
+      } catch (linkErr: any) {
+        // Fallback: search all shoppers
+        const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
+          populate: ['user'],
+          limit: 200,
+        });
+        shopperRecord = allShoppers.find((s: any) =>
+          s.user?.id === customUser.id ||
+          s.user?.documentId === customUser.documentId
+        );
+      }
+
+      if (!shopperRecord || shopperRecord.kyc_status !== 'approved') {
+        return ctx.forbidden('Your KYC must be approved before you can claim orders');
+      }
+
       // Find the order
       const order: any = await strapi.db.query('api::order.order').findOne({
         where: { documentId: id },
@@ -164,13 +193,27 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Order is already assigned to a shopper');
       }
 
-      // Assign shopper and update status
-      const updated = await strapi.entityService.update('api::order.order', order.id, {
-        data: {
-          shopper: customUser.id,
+      // Atomic claim: update status only if still 'payment_confirmed' to prevent race conditions
+      const claimResult = await strapi.db.connection('orders')
+        .where({ id: order.id, status: 'payment_confirmed' })
+        .update({
           status: 'shopper_assigned',
-          shopper_assigned_at: new Date(),
-        },
+          shopper_assigned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (claimResult === 0) {
+        return ctx.conflict('Order was already claimed by another shopper');
+      }
+
+      // Insert the shopper link (Strapi v5 uses a link table for relations)
+      await strapi.db.connection('orders_shopper_lnk').insert({
+        order_id: order.id,
+        user_id: customUser.id,
+      });
+
+      // Fetch the updated order with full population
+      const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
           order_items: { populate: { product: true } },
           delivery_address: true,
@@ -364,6 +407,35 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.forbidden('Only riders can claim deliveries');
       }
 
+      // Verify rider KYC is approved before allowing delivery claims
+      let riderRecord: any = null;
+      try {
+        const linkResult: any = await strapi.db.connection.raw(
+          `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+          [customUser.id]
+        );
+        const rows = linkResult?.rows || linkResult;
+        if (rows && rows.length > 0) {
+          riderRecord = await strapi.db.query('api::rider.rider').findOne({
+            where: { id: rows[0].rider_id },
+          });
+        }
+      } catch (linkErr: any) {
+        // Fallback: search all riders
+        const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
+          populate: ['user'],
+          limit: 200,
+        });
+        riderRecord = allRiders.find((r: any) =>
+          r.user?.id === customUser.id ||
+          r.user?.documentId === customUser.documentId
+        );
+      }
+
+      if (!riderRecord || riderRecord.kyc_status !== 'approved') {
+        return ctx.forbidden('Your KYC must be approved before you can claim deliveries');
+      }
+
       // Find the order
       const order: any = await strapi.db.query('api::order.order').findOne({
         where: { documentId: id },
@@ -379,13 +451,27 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Order is already assigned to a rider');
       }
 
-      // Assign rider and update status
-      const updated = await strapi.entityService.update('api::order.order', order.id, {
-        data: {
-          rider: customUser.id,
+      // Atomic claim: update status only if still 'ready_for_pickup' to prevent race conditions
+      const claimResult = await strapi.db.connection('orders')
+        .where({ id: order.id, status: 'ready_for_pickup' })
+        .update({
           status: 'rider_assigned',
-          rider_assigned_at: new Date(),
-        },
+          rider_assigned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (claimResult === 0) {
+        return ctx.conflict('Delivery was already claimed by another rider');
+      }
+
+      // Insert the rider link (Strapi v5 uses a link table for relations)
+      await strapi.db.connection('orders_rider_lnk').insert({
+        order_id: order.id,
+        user_id: customUser.id,
+      });
+
+      // Fetch the updated order with full population
+      const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
           order_items: { populate: { product: true } },
           delivery_address: true,

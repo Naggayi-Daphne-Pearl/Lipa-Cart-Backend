@@ -361,7 +361,41 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       // Build update data with timestamps
       const updateData: any = { status };
       if (status === 'shopping') updateData.shopping_started_at = new Date();
-      if (status === 'ready_for_pickup') updateData.shopping_completed_at = new Date();
+      if (status === 'ready_for_pickup') {
+        updateData.shopping_completed_at = new Date();
+
+        // Recalculate total based on found items with actual prices
+        try {
+          const orderItems: any[] = await strapi.db.query('api::order-item.order-item').findMany({
+            where: { id: { $in: (await strapi.db.connection.raw(
+              `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`, [order.id]
+            )).map((r: any) => r.order_item_id) } },
+          });
+
+          let actualSubtotal = 0;
+          for (const item of orderItems) {
+            if (item.found === true || item.found === 1) {
+              const price = item.actual_price ?? item.estimated_price ?? 0;
+              const qty = item.quantity ?? 1;
+              actualSubtotal += price * qty;
+            }
+          }
+
+          const serviceFeeRate = 0.05;
+          const actualServiceFee = actualSubtotal * serviceFeeRate;
+          const deliveryFee = order.delivery_fee || 0;
+          const actualTotal = actualSubtotal + actualServiceFee + deliveryFee;
+
+          updateData.subtotal = actualSubtotal;
+          updateData.service_fee = actualServiceFee;
+          updateData.total = actualTotal;
+
+          console.log(`Order ${order.order_number}: adjusted total from ${order.total} to ${actualTotal} (${orderItems.filter((i: any) => i.found).length}/${orderItems.length} items found)`);
+        } catch (calcErr: any) {
+          console.error('Failed to recalculate order total:', calcErr?.message);
+          // Continue with status update even if recalculation fails
+        }
+      }
 
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: updateData,

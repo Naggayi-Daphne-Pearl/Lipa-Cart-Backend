@@ -36,8 +36,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         return ctx.badRequest('id_number, id_photo_url, and face_photo_url are required');
       }
 
-      console.log('KYC submit - JWT user:', { id: user.id, username: user.username, email: user.email });
-
       // Find the custom user record for this user
       // Try matching by phone (username) first, then by email
       let customUser: any = await strapi.db.query('api::user.user').findOne({
@@ -50,8 +48,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           where: { phone: user.email },
         });
       }
-
-      console.log('KYC submit - customUser found:', customUser ? { id: customUser.id, documentId: customUser.documentId, user_type: customUser.user_type, phone: customUser.phone } : 'NOT FOUND');
 
       if (!customUser || customUser.user_type !== 'shopper') {
         return ctx.forbidden(`Only shoppers can submit KYC. User type: ${customUser?.user_type || 'not found'}`);
@@ -73,7 +69,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           });
         }
       } catch (linkErr: any) {
-        console.log('KYC submit - link table query failed:', linkErr?.message);
       }
 
       // Fallback: query all shoppers with populate and match
@@ -86,14 +81,10 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           s.user?.id === customUser.id ||
           s.user?.documentId === customUser.documentId
         );
-        console.log('KYC submit - fallback search, found:', shopper ? shopper.id : 'NOT FOUND');
       }
-
-      console.log('KYC submit - shopper found:', shopper ? { id: shopper.id, documentId: shopper.documentId } : 'NOT FOUND');
 
       if (!shopper) {
         // Auto-create shopper record if it doesn't exist
-        console.log('KYC submit - creating shopper record for customUser:', customUser.documentId);
         try {
           const newShopper = await strapi.entityService.create('api::shopper.shopper', {
             data: {
@@ -102,7 +93,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
             } as any,
           });
           shopper = newShopper;
-          console.log('KYC submit - created shopper:', { id: shopper.id, documentId: shopper.documentId });
         } catch (createErr: any) {
           console.error('KYC submit - failed to create shopper:', createErr?.message || createErr);
           return ctx.badRequest(`Failed to create shopper profile: ${createErr?.message || 'Unknown error'}`);
@@ -111,7 +101,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
 
       // Update shopper with KYC data using documentId (Strapi v5 requirement)
       const shopperDocId = shopper.documentId || shopper.id;
-      console.log('KYC submit - updating shopper:', { id: shopper.id, documentId: shopperDocId });
 
       // Build update data with optional payment & contact fields
       const kycUpdateData: any = {

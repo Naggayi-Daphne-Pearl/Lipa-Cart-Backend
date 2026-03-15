@@ -42,8 +42,6 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
         return ctx.badRequest('vehicle_type and license_number are required');
       }
 
-      console.log('Rider KYC submit - JWT user:', { id: user.id, username: user.username });
-
       // Find the custom user record
       let customUser: any = await strapi.db.query('api::user.user').findOne({
         where: { phone: user.username },
@@ -73,7 +71,6 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
           });
         }
       } catch (linkErr: any) {
-        console.log('Rider KYC submit - link table query failed:', linkErr?.message);
       }
 
       // Fallback: populate and match
@@ -90,7 +87,6 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
 
       if (!rider) {
         // Auto-create rider record
-        console.log('Rider KYC submit - creating rider record for:', customUser.documentId);
         try {
           rider = await strapi.entityService.create('api::rider.rider', {
             data: {

@@ -3,8 +3,6 @@ import { factories } from '@strapi/strapi';
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   async find(ctx: any) {
     try {
-      console.log('DEBUG: Finding orders with query:', JSON.stringify(ctx.query));
-
       // Override populate to always include all needed relations
       // This avoids complex query string parsing issues with Strapi v5
       ctx.query.populate = {
@@ -19,13 +17,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         rider: true,
       };
 
-      console.log('DEBUG: Modified populate query:', JSON.stringify(ctx.query.populate));
-
       const result = await super.find(ctx);
 
       if (result.data && Array.isArray(result.data)) {
-        console.log(`DEBUG: Found ${result.data.length} orders`);
-
         // Manually populate order_items for each order if not already populated
         for (let i = 0; i < result.data.length; i++) {
           const order = result.data[i] as any;
@@ -57,11 +51,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
             }
           }
 
-          const updatedAttrs = (order.attributes || order) as any;
-          console.log(`DEBUG: Order ${i} - ID: ${order.id}, Order#: ${updatedAttrs.order_number}, Items count: ${updatedAttrs.order_items?.length || 0}`);
-          if (updatedAttrs.order_items) {
-            console.log(`DEBUG: Order ${i} order_items:`, JSON.stringify(updatedAttrs.order_items, null, 2));
-          }
         }
       }
 
@@ -74,8 +63,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
   async findOne(ctx: any) {
     try {
-      console.log('DEBUG: Finding single order with query:', ctx.query);
-
       // Ensure order_items are always populated
       if (!ctx.query.populate) {
         ctx.query.populate = {};
@@ -99,14 +86,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         };
       }
 
-      console.log('DEBUG: Modified populate query:', JSON.stringify(ctx.query.populate));
-
       const result = await super.findOne(ctx);
-
-      if (result.data) {
-        const orderAttrs = result.data.attributes || result.data;
-        console.log(`DEBUG: Got order - ID: ${result.data.id}, Order#: ${orderAttrs.order_number}, Items count: ${orderAttrs.order_items?.length || 0}`);
-      }
 
       return result;
     } catch (error) {
@@ -390,7 +370,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           updateData.service_fee = actualServiceFee;
           updateData.total = actualTotal;
 
-          console.log(`Order ${order.order_number}: adjusted total from ${order.total} to ${actualTotal} (${orderItems.filter((i: any) => i.found).length}/${orderItems.length} items found)`);
         } catch (calcErr: any) {
           console.error('Failed to recalculate order total:', calcErr?.message);
           // Continue with status update even if recalculation fails
@@ -693,7 +672,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
                     total_orders_completed: (shopperRecord.total_orders_completed || 0) + 1,
                   },
                 });
-                console.log(`Updated shopper ${shopperRecord.id}: +${commission} earnings, +1 completed`);
               }
             }
           }
@@ -719,7 +697,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
                   total_deliveries_completed: (riderRecord.total_deliveries_completed || 0) + 1,
                 },
               });
-              console.log(`Updated rider ${riderRecord.id}: +${deliveryFee} earnings, +1 delivery`);
             }
           }
         } catch (e: any) {

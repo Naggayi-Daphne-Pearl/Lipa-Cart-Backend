@@ -28,10 +28,6 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     // Store in memory
     this.otpStore.set(phone, { otp, expiresAt });
 
-    // Log OTP to console (mock SMS)
-    console.log(`\n🔐 OTP for ${phone}: ${otp}`);
-    console.log(`⏰ Expires at: ${expiresAt.toLocaleTimeString()}\n`);
-
     return otp;
   },
 
@@ -44,25 +40,21 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     const entry = this.otpStore.get(phone);
 
     if (!entry) {
-      console.log(`❌ No OTP found for ${phone}`);
       return false;
     }
 
     const now = new Date();
     if (now > entry.expiresAt) {
-      console.log(`❌ OTP expired for ${phone}`);
       this.otpStore.delete(phone);
       return false;
     }
 
     if (entry.otp !== otp) {
-      console.log(`❌ Invalid OTP for ${phone}`);
       return false;
     }
 
     // Valid OTP - delete it (single-use)
     this.otpStore.delete(phone);
-    console.log(`✅ OTP verified for ${phone}`);
     return true;
   },
 
@@ -81,7 +73,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     });
 
     if (removed > 0) {
-      console.log(`🧹 Cleaned up ${removed} expired OTP entries`);
+      // Expired OTP entries cleaned up
     }
   },
 });

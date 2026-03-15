@@ -14,11 +14,6 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
   async create(ctx) {
     const response = await super.create(ctx);
     
-    // Log user creation for tracking
-    if (response?.data) {
-      console.log(`✓ Created user profile: ${response.data.id} (${response.data.user_type})`);
-    }
-    
     return response;
   },
 
@@ -27,11 +22,6 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
    */
   async update(ctx) {
     const response = await super.update(ctx);
-
-    // Log user updates for tracking
-    if (response?.data) {
-      console.log(`✓ Updated user profile: ${response.data.id} (${response.data.user_type})`);
-    }
 
     return response;
   },

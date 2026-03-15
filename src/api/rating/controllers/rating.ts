@@ -56,7 +56,6 @@ export default factories.createCoreController('api::rating.rating', ({ strapi })
                     total_ratings: newTotalRatings,
                   },
                 });
-                console.log(`Updated shopper ${shopper.id}: rating ${newAvgRating.toFixed(1)}, total_ratings ${newTotalRatings}`);
               }
             }
           }
@@ -95,7 +94,6 @@ export default factories.createCoreController('api::rating.rating', ({ strapi })
                     total_ratings: newTotalRatings,
                   },
                 });
-                console.log(`Updated rider ${rider.id}: rating ${newAvgRating.toFixed(1)}, total_ratings ${newTotalRatings}`);
               }
             }
           }

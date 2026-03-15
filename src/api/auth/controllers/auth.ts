@@ -241,7 +241,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('login - link table query failed:', linkErr?.message);
           }
 
           if (!shopper) {
@@ -286,7 +285,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('login - rider link table query failed:', linkErr?.message);
           }
 
           if (!rider) {
@@ -395,7 +393,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('refresh - link table query failed:', linkErr?.message);
           }
 
           if (!shopper) {
@@ -440,7 +437,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('refresh - rider link table query failed:', linkErr?.message);
           }
 
           if (!rider) {
@@ -554,7 +550,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('me - link table query failed:', linkErr?.message);
           }
 
           // Fallback: query all shoppers with populate and match
@@ -577,9 +572,6 @@ export default {
             if (shopper.is_verified === true && kycStatus !== 'approved') {
               kycStatus = 'approved';
             }
-            console.log('me - shopper found:', { id: shopper.id, documentId: shopper.documentId, kyc_status: kycStatus, is_verified: shopper.is_verified });
-          } else {
-            console.log('me - no shopper record found for user:', customUser.id);
           }
         } catch (err) {
           console.error('Failed to fetch shopper record:', err);
@@ -605,7 +597,6 @@ export default {
               });
             }
           } catch (linkErr: any) {
-            console.log('me - rider link table query failed:', linkErr?.message);
           }
 
           if (!rider) {
@@ -626,9 +617,6 @@ export default {
             if (rider.is_verified === true && riderKycStatus !== 'approved') {
               riderKycStatus = 'approved';
             }
-            console.log('me - rider found:', { id: rider.id, documentId: rider.documentId, kyc_status: riderKycStatus, is_verified: rider.is_verified });
-          } else {
-            console.log('me - no rider record found for user:', customUser.id);
           }
         } catch (err) {
           console.error('Failed to fetch rider record:', err);
@@ -730,8 +718,6 @@ export default {
       await strapi.plugins['users-permissions'].services.user.edit(authUser.id, {
         password: newPassword,
       });
-
-      console.log(`Password reset successful for ${phone}`);
 
       ctx.body = {
         success: true,

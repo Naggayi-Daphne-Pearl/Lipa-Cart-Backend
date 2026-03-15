@@ -3,11 +3,7 @@ import { factories } from '@strapi/strapi';
 export default factories.createCoreController('api::order-item.order-item', ({ strapi }) => ({
   async create(ctx: any) {
     try {
-      const { data } = ctx.request.body;
-      console.log('DEBUG: Creating order item with data:', JSON.stringify(data, null, 2));
-      
       const result = await super.create(ctx);
-      console.log('DEBUG: Order item created successfully:', JSON.stringify(result, null, 2));
       return result;
     } catch (error) {
       console.error('ERROR: Failed to create order item:', error);
@@ -140,15 +136,11 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
   async bulkCreate(ctx: any) {
     try {
-      console.log(`\nBulk create request received`);
-
       const { items } = ctx.request.body;
 
       if (!items || !Array.isArray(items)) {
         return ctx.badRequest('items array is required');
       }
-
-      console.log(`BULK CREATE: Processing ${items.length} order items`);
 
       const createdItems = [];
       const failedItems = [];
@@ -158,8 +150,6 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         try {
           const { order: orderDocId, product: productDocId, ...scalarData } = itemData;
 
-          console.log(`[${index + 1}/${items.length}] order=${orderDocId}, product=${productDocId}, qty=${scalarData.quantity}`);
-
           // Resolve order documentId to numeric ID
           let orderId = null;
           if (orderDocId) {
@@ -168,9 +158,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             });
             if (orderRecord) {
               orderId = orderRecord.id;
-              console.log(`  Resolved order documentId ${orderDocId} -> id ${orderId}`);
             } else {
-              console.error(`  Order not found for documentId: ${orderDocId}`);
             }
           }
 
@@ -182,9 +170,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             });
             if (productRecord) {
               productId = productRecord.id;
-              console.log(`  Resolved product documentId ${productDocId} -> id ${productId}`);
             } else {
-              console.log(`  Product not found for documentId: ${productDocId} (skipping link)`);
             }
           }
 
@@ -197,15 +183,11 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             },
           });
 
-          console.log(`  ✓ Created order item id=${orderItem.id}`);
           createdItems.push(orderItem);
         } catch (error) {
-          console.error(`  ✗ FAILED:`, error.message);
           failedItems.push({ item: itemData, error: error.message });
         }
       }
-
-      console.log(`RESULT: ${createdItems.length} created, ${failedItems.length} failed`);
 
       ctx.body = {
         data: createdItems,

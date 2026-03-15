@@ -7,8 +7,6 @@ export default (config: any, { strapi }: any) => {
   return async (ctx: any, next: any) => {
     // Check if this is the bulk create endpoint
     if (ctx.request.path === '/api/order-items/bulk' && ctx.request.method === 'POST') {
-      console.log('DEBUG: Bulk endpoint middleware - checking authentication');
-
       // Strapi's permission system will have already authenticated the user via Bearer token
       // We just need to skip the permission check by setting a flag
       // or by manually verifying the token
@@ -17,11 +15,9 @@ export default (config: any, { strapi }: any) => {
         // The user should already be in ctx.state.user if they have a valid Bearer token
         // If not, the request will be rejected below
         if (ctx.state.user) {
-          console.log(`DEBUG: Bulk endpoint - user ${ctx.state.user.id} authenticated`);
           // Allow the request to proceed to the controller
           return await next();
         } else {
-          console.log('DEBUG: Bulk endpoint - no authenticated user found');
           // Try to authenticate using Bearer token if present
           const authHeader = ctx.request.header.authorization;
           if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -30,10 +26,8 @@ export default (config: any, { strapi }: any) => {
               // Verify token using Strapi's auth service
               const user = await strapi.plugin('users-permissions').service('jwt').verify(token);
               ctx.state.user = user;
-              console.log(`DEBUG: Bulk endpoint - authenticated user ${user.id} via Bearer token`);
               return await next();
             } catch (err) {
-              console.log('DEBUG: Bulk endpoint - Bearer token verification failed:', err.message);
               return ctx.unauthorized('Invalid authentication token');
             }
           }

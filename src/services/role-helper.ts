@@ -37,7 +37,6 @@ export async function assignRoleToAuthUser(
         data: { role: role.id },
       });
 
-    console.log(`✓ Assigned ${userType} role to auth user ${strapiAuthUserId}`);
     return updatedUser;
   } catch (error) {
     console.error(`Error assigning ${userType} role to auth user ${strapiAuthUserId}:`, error);
@@ -82,7 +81,6 @@ export async function createAuthUserWithRole(
       blocked: false,
     });
 
-    console.log(`✓ Created auth user ${user.id} with ${userData.userType} role`);
     return user;
   } catch (error) {
     console.error(`Error creating auth user with ${userData.userType} role:`, error);

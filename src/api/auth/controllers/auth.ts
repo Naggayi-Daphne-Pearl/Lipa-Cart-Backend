@@ -344,8 +344,19 @@ export default {
    */
   async refresh(ctx: any) {
     try {
-      // User is already authenticated via middleware (JWT exists and is valid)
-      const user = ctx.state.user;
+      // Manual JWT verification (auth: false on route)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let user: any;
+      try {
+        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+      } catch (err) {
+        return ctx.unauthorized('Invalid or expired token');
+      }
 
       if (!user) {
         return ctx.unauthorized('No user found');
@@ -493,7 +504,19 @@ export default {
    */
   async me(ctx: any) {
     try {
-      const user = ctx.state.user;
+      // Manual JWT verification (auth: false on route)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let user: any;
+      try {
+        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+      } catch (err) {
+        return ctx.unauthorized('Invalid or expired token');
+      }
 
       if (!user) {
         return ctx.unauthorized('No user found');

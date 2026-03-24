@@ -18,42 +18,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       };
 
       const result = await super.find(ctx);
-
-      if (result.data && Array.isArray(result.data)) {
-        // Manually populate order_items for each order if not already populated
-        for (let i = 0; i < result.data.length; i++) {
-          const order = result.data[i] as any;
-          const orderAttrs = (order.attributes || order) as any;
-
-          // If order_items not populated, fetch them manually
-          if (!orderAttrs.order_items) {
-            try {
-              const orderId = order.id;
-              const populated = (await strapi.entityService.findOne('api::order.order', orderId, {
-                populate: {
-                  order_items: {
-                    populate: {
-                      product: true,
-                    },
-                  },
-                },
-              })) as any;
-
-              if (populated && populated.order_items) {
-                if (order.attributes) {
-                  order.attributes.order_items = populated.order_items;
-                } else {
-                  order.order_items = populated.order_items;
-                }
-              }
-            } catch (e) {
-              console.error(`Failed to populate order_items for order ${order.id}:`, e);
-            }
-          }
-
-        }
-      }
-
       return result;
     } catch (error) {
       console.error('ERROR: Failed to find orders:', error);

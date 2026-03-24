@@ -933,7 +933,9 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     kyc_rejection_reason: Schema.Attribute.String;
     kyc_reviewed_at: Schema.Attribute.DateTime;
-    kyc_status: Schema.Attribute.String &
+    kyc_status: Schema.Attribute.Enumeration<
+      ['not_submitted', 'pending_review', 'approved', 'rejected']
+    > &
       Schema.Attribute.DefaultTo<'not_submitted'>;
     kyc_submitted_at: Schema.Attribute.DateTime;
     license_number: Schema.Attribute.String;
@@ -943,7 +945,10 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::rider.rider'> &
       Schema.Attribute.Private;
     mobile_money_number: Schema.Attribute.String;
-    mobile_money_provider: Schema.Attribute.String;
+    mobile_money_provider: Schema.Attribute.Enumeration<
+      ['MTN Mobile Money', 'Airtel Money']
+    > &
+      Schema.Attribute.DefaultTo<'MTN Mobile Money'>;
     publishedAt: Schema.Attribute.DateTime;
     rating: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_deliveries_completed: Schema.Attribute.Integer &

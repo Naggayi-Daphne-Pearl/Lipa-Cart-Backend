@@ -48,7 +48,8 @@
       "type": "string"
     },
     "kyc_status": {
-      "type": "string",
+      "type": "enumeration",
+      "enum": ["not_submitted", "pending_review", "approved", "rejected"],
       "default": "not_submitted"
     },
     "kyc_submitted_at": {
@@ -91,7 +92,9 @@
       "default": 0
     },
     "mobile_money_provider": {
-      "type": "string"
+      "type": "enumeration",
+      "enum": ["MTN Mobile Money", "Airtel Money"],
+      "default": "MTN Mobile Money"
     },
     "mobile_money_number": {
       "type": "string"

@@ -1,0 +1,23 @@
+export default {
+  type: 'content-api',
+  routes: [
+    {
+      method: 'PATCH',
+      path: '/order-items/batch-update',
+      handler: 'order-item.batchUpdate',
+      config: { auth: false },
+    },
+    {
+      method: 'PATCH',
+      path: '/order-items/:id/shopper-update',
+      handler: 'order-item.shopperUpdate',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
+      path: '/order-items/bulk',
+      handler: 'order-item.bulkCreate',
+      config: { auth: false },
+    },
+  ],
+};

@@ -1,9 +1,20 @@
 import type { Core } from '@strapi/strapi';
+import * as Sentry from '@sentry/node';
 import seed from '../scripts/seed';
 import setupRoles from '../scripts/setup-roles';
 
 export default {
-  register(/* { strapi }: { strapi: Core.Strapi } */) {},
+  register(/* { strapi }: { strapi: Core.Strapi } */) {
+    if (process.env.SENTRY_DSN_BACKEND) {
+      Sentry.init({
+        dsn: process.env.SENTRY_DSN_BACKEND,
+        environment: process.env.SENTRY_ENV || 'development',
+        enableLogs: true,
+        tracesSampleRate: 1.0,
+        sendDefaultPii: true,
+      });
+    }
+  },
 
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
     // Setup roles first

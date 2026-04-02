@@ -94,5 +94,85 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
       ctx.throw(500, 'Failed to fetch user profile');
     }
   },
+
+  /**
+   * Delete current user account.
+   * DELETE /api/user/delete-account
+   * Removes both custom user profile and Strapi auth user.
+   */
+  async deleteAccount(ctx: any) {
+    try {
+      const authUser = ctx.state.user;
+      if (!authUser) return ctx.unauthorized('Authentication required');
+
+      // Find custom user
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: authUser.username },
+      });
+
+      if (customUser) {
+        // Clear FCM token
+        await strapi.db.query('api::user.user').update({
+          where: { id: customUser.id },
+          data: { fcm_token: null, name: 'Deleted User', email: null, phone: `deleted_${customUser.id}` },
+        });
+      }
+
+      // Delete auth user (users-permissions)
+      await strapi.plugins['users-permissions'].services.user.remove({ id: authUser.id });
+
+      ctx.body = { ok: true, message: 'Account deleted successfully' };
+    } catch (error) {
+      console.error('Delete account error:', error);
+      ctx.throw(500, 'Failed to delete account');
+    }
+  },
+
+  /**
+   * Change phone number with OTP verification.
+   * POST /api/user/change-phone
+   * Body: { new_phone: string, otp: string }
+   */
+  async changePhone(ctx: any) {
+    try {
+      const authUser = ctx.state.user;
+      if (!authUser) return ctx.unauthorized('Authentication required');
+
+      const { new_phone, otp } = ctx.request.body;
+      if (!new_phone || !otp) return ctx.badRequest('new_phone and otp are required');
+
+      // Verify OTP for the new phone
+      const otpService = strapi.service('api::otp.otp') as any;
+      const isValid = otpService.verifyOtp(new_phone, otp);
+      if (!isValid) return ctx.badRequest('Invalid or expired OTP');
+
+      // Check if new phone is already taken
+      const existing: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: new_phone },
+      });
+      if (existing) return ctx.badRequest('This phone number is already registered');
+
+      // Update custom user phone
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: authUser.username },
+      });
+      if (customUser) {
+        await strapi.db.query('api::user.user').update({
+          where: { id: customUser.id },
+          data: { phone: new_phone },
+        });
+      }
+
+      // Update auth user username
+      await strapi.plugins['users-permissions'].services.user.edit(authUser.id, {
+        username: new_phone,
+      });
+
+      ctx.body = { ok: true, message: 'Phone number updated successfully' };
+    } catch (error) {
+      console.error('Change phone error:', error);
+      ctx.throw(500, 'Failed to change phone number');
+    }
+  },
 }));
 

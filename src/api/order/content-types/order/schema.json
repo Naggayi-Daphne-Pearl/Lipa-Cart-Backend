@@ -96,6 +96,19 @@
     "cancellation_reason": {
       "type": "text"
     },
+    "promo_code": {
+      "type": "string"
+    },
+    "tip_amount": {
+      "type": "decimal",
+      "default": 0
+    },
+    "delivery_slot": {
+      "type": "string"
+    },
+    "delivery_proof_url": {
+      "type": "string"
+    },
     "payment_confirmed_at": {
       "type": "datetime"
     },

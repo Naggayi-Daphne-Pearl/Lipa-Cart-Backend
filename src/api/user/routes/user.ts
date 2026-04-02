@@ -12,6 +12,18 @@ export default {
       path: '/user/register-device',
       handler: 'user.registerDevice',
     },
+    // Delete user account (requires auth)
+    {
+      method: 'DELETE',
+      path: '/user/delete-account',
+      handler: 'user.deleteAccount',
+    },
+    // Change phone number with OTP verification (requires auth)
+    {
+      method: 'POST',
+      path: '/user/change-phone',
+      handler: 'user.changePhone',
+    },
     // Admin endpoints: User management (manually check auth inside handler)
     {
       method: 'GET',

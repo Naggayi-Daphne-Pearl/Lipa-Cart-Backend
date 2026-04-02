@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { sendPush, saveNotification, isFirebaseReady } from '../../../services/notification';
 
 export default factories.createCoreController('api::order-item.order-item', ({ strapi }) => ({
   async create(ctx: any) {
@@ -121,6 +122,49 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           results.push(updated);
         } catch (e) {
           failed.push({ documentId: itemUpdate.documentId, error: e.message });
+        }
+      }
+
+      // Send notification for substitutes
+      const substitutes = items.filter((i: any) =>
+        i.shopper_notes && typeof i.shopper_notes === 'string' && i.shopper_notes.startsWith('SUBSTITUTE:')
+      );
+      if (substitutes.length > 0) {
+        try {
+          // Find the order for these items to get the customer
+          const firstItem: any = await strapi.db.query('api::order-item.order-item').findOne({
+            where: { documentId: items[0].documentId },
+            populate: ['order'],
+          });
+          if (firstItem?.order) {
+            const order: any = await strapi.db.query('api::order.order').findOne({
+              where: { id: firstItem.order.id },
+              populate: ['customer'],
+            });
+            if (order?.customer) {
+              const customer: any = await strapi.db.query('api::user.user').findOne({
+                where: { id: order.customer.id },
+              });
+              if (customer?.fcm_token && isFirebaseReady()) {
+                const subNames = substitutes.map((s: any) => s.shopper_notes.replace('SUBSTITUTE: ', '')).join(', ');
+                await sendPush(
+                  customer.fcm_token,
+                  'Substitute Suggested',
+                  `Your shopper suggested: ${subNames}. Check your order for details.`,
+                  { type: 'order_status', orderId: order.documentId },
+                ).catch(() => {});
+              }
+              await saveNotification(strapi, {
+                title: 'Substitute Suggested',
+                body: `${substitutes.length} item(s) unavailable — your shopper suggested substitutes.`,
+                type: 'order_status',
+                userId: order.customer.id,
+                orderNumber: order.order_number,
+              }).catch(() => {});
+            }
+          }
+        } catch (notifErr) {
+          // Non-blocking — don't fail the batch update
         }
       }
 

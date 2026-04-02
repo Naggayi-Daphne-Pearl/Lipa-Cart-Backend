@@ -27,6 +27,43 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
   },
 
   /**
+   * Register or update FCM device token for push notifications.
+   * POST /api/user/register-device
+   * Body: { fcm_token: string }
+   */
+  async registerDevice(ctx: any) {
+    try {
+      const authUser = ctx.state.user;
+      if (!authUser) {
+        return ctx.unauthorized('You must be authenticated');
+      }
+
+      const { fcm_token } = ctx.request.body;
+      if (!fcm_token || typeof fcm_token !== 'string') {
+        return ctx.badRequest('fcm_token is required');
+      }
+
+      const customUser = await strapi.db.query('api::user.user').findOne({
+        where: { phone: authUser.username },
+      }) as any;
+
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      await strapi.db.query('api::user.user').update({
+        where: { id: customUser.id },
+        data: { fcm_token },
+      });
+
+      ctx.body = { ok: true };
+    } catch (error) {
+      console.error('Error registering device token:', error);
+      ctx.throw(500, 'Failed to register device');
+    }
+  },
+
+  /**
    * Get current user profile
    * Uses JWT to identify the authenticated user
    */

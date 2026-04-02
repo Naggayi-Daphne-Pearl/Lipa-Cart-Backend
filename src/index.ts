@@ -2,6 +2,9 @@ import type { Core } from '@strapi/strapi';
 import * as Sentry from '@sentry/node';
 import seed from '../scripts/seed';
 import setupRoles from '../scripts/setup-roles';
+import { initFirebase } from './services/notification';
+import { initEmail } from './services/email';
+import { initSms } from './services/sms';
 
 export default {
   register(/* { strapi }: { strapi: Core.Strapi } */) {
@@ -14,6 +17,11 @@ export default {
         sendDefaultPii: true,
       });
     }
+
+    // Initialize communication services
+    initFirebase();
+    initEmail();
+    initSms();
   },
 
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
@@ -49,6 +57,10 @@ export default {
       { action: 'find', contentType: 'api::rider.rider' },
       { action: 'findOne', contentType: 'api::rider.rider' },
       
+      // Notifications
+      { action: 'find', contentType: 'api::notification.notification' },
+      { action: 'findOne', contentType: 'api::notification.notification' },
+
       // Orders & Related
       { action: 'find', contentType: 'api::order.order' },
       { action: 'findOne', contentType: 'api::order.order' },

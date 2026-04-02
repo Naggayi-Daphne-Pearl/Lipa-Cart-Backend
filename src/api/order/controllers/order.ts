@@ -1,4 +1,13 @@
 import { factories } from '@strapi/strapi';
+import {
+  notifyOrderStatusChange,
+  notifyShoppersNewTask,
+  notifyRidersNewDelivery,
+} from '../../../services/notification';
+import {
+  sendOrderConfirmationEmail,
+  sendDeliveryReceiptEmail,
+} from '../../../services/email';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   async find(ctx: any) {
@@ -164,6 +173,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           customer: true,
         },
       });
+
+      // Notify customer: shopper assigned
+      notifyOrderStatusChange(strapi, order.id, 'shopper_assigned', order.order_number).catch(() => {});
 
       ctx.body = { data: updated };
     } catch (error) {
@@ -349,6 +361,13 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         },
       });
 
+      // Notify customer about status change
+      notifyOrderStatusChange(strapi, order.id, status, order.order_number).catch(() => {});
+      // When ready for pickup, notify online riders
+      if (status === 'ready_for_pickup') {
+        notifyRidersNewDelivery(strapi, order.order_number).catch(() => {});
+      }
+
       ctx.body = { data: updated };
     } catch (error) {
       console.error('Update shopper status error:', error);
@@ -413,6 +432,13 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           customer: true,
         },
       });
+
+      // Notify customer: payment confirmed
+      notifyOrderStatusChange(strapi, order.id, 'payment_confirmed', order.order_number).catch(() => {});
+      // Email: order confirmation
+      sendOrderConfirmationEmail(strapi, order.id, order.order_number).catch(() => {});
+      // Notify online shoppers: new task available
+      notifyShoppersNewTask(strapi, order.order_number).catch(() => {});
 
       ctx.body = { data: updated };
     } catch (error) {
@@ -528,6 +554,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         },
       });
 
+      // Notify customer: rider assigned
+      notifyOrderStatusChange(strapi, order.id, 'rider_assigned', order.order_number).catch(() => {});
+
       ctx.body = { data: updated };
     } catch (error) {
       console.error('Claim delivery error:', error);
@@ -608,6 +637,14 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           shopper: true,
         },
       });
+
+      // Notify customer about status change (in_transit or delivered)
+      notifyOrderStatusChange(strapi, order.id, status, order.order_number).catch(() => {});
+
+      // Email: delivery receipt
+      if (status === 'delivered') {
+        sendDeliveryReceiptEmail(strapi, order.id, order.order_number).catch(() => {});
+      }
 
       // When delivered, update shopper and rider stats
       if (status === 'delivered') {

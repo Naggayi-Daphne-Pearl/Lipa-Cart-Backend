@@ -666,9 +666,9 @@ export default {
         return ctx.badRequest('No account found with this phone number');
       }
 
-      // Send OTP
+      // Send OTP (via SMS if configured, else logs to console)
       const otpService = strapi.service('api::otp.otp');
-      otpService.generateOtp(phone);
+      await otpService.generateOtp(phone);
 
       ctx.body = {
         success: true,

@@ -6,6 +6,12 @@ export default {
       path: '/user/me',
       handler: 'user.me',
     },
+    // Register FCM device token for push notifications (requires auth)
+    {
+      method: 'POST',
+      path: '/user/register-device',
+      handler: 'user.registerDevice',
+    },
     // Admin endpoints: User management (manually check auth inside handler)
     {
       method: 'GET',

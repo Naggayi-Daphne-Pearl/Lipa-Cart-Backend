@@ -16,13 +16,13 @@ export default {
         return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX (9 digits after prefix)');
       }
 
-      // Generate and store OTP (logs to console)
+      // Generate, store, and send OTP (via SMS if configured, else logs to console)
       const otpService = strapi.service('api::otp.otp');
-      otpService.generateOtp(phone);
+      await otpService.generateOtp(phone);
 
       ctx.body = {
         success: true,
-        message: 'OTP sent (check backend console)',
+        message: 'Verification code sent',
       };
     } catch (error) {
       ctx.throw(500, 'Failed to send OTP');

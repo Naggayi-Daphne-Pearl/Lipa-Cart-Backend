@@ -1,0 +1,44 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notifications",
+  "info": {
+    "singularName": "notification",
+    "pluralName": "notifications",
+    "displayName": "Notification",
+    "description": "Push notification history for in-app inbox"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "body": {
+      "type": "text",
+      "required": true
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": ["order_status", "new_task", "new_delivery", "promo", "system"],
+      "default": "order_status"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user"
+    },
+    "order_number": {
+      "type": "string"
+    },
+    "data": {
+      "type": "json"
+    }
+  }
+}

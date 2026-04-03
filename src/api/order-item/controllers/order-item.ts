@@ -154,13 +154,14 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
                   { type: 'order_status', orderId: order.documentId },
                 ).catch(() => {});
               }
-              await saveNotification(strapi, {
-                title: 'Substitute Suggested',
-                body: `${substitutes.length} item(s) unavailable — your shopper suggested substitutes.`,
-                type: 'order_status',
-                userId: order.customer.id,
-                orderNumber: order.order_number,
-              }).catch(() => {});
+              await saveNotification(
+                strapi,
+                order.customer.id,
+                'Substitute Suggested',
+                `${substitutes.length} item(s) unavailable — your shopper suggested substitutes.`,
+                'order_status',
+                order.order_number,
+              ).catch(() => {});
             }
           }
         } catch (notifErr) {

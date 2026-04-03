@@ -1,5 +1,7 @@
 import { notifyOrderStatusChange } from '../../../../services/notification';
 
+declare const strapi: any;
+
 export default {
   async afterUpdate(event: any) {
     const { result, params } = event;

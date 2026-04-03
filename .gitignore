@@ -122,6 +122,7 @@ coverage
 ############################
 
 .env
+firebase-service-account.json
 license.txt
 exports
 .strapi

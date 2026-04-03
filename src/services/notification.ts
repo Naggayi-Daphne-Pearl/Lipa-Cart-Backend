@@ -66,8 +66,10 @@ export function initFirebase(): boolean {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
       credential = admin.credential.cert(serviceAccount);
     } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      const fs = require('fs');
+      const path = require('path');
+      const filePath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      const serviceAccount = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       credential = admin.credential.cert(serviceAccount);
     }
 
@@ -129,7 +131,7 @@ export async function sendPush(
 /**
  * Save a notification record to the database for the in-app inbox.
  */
-async function saveNotification(
+export async function saveNotification(
   strapi: any,
   userId: number,
   title: string,

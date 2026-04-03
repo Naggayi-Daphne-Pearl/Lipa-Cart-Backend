@@ -59,6 +59,11 @@ const RIDER_NEW_DELIVERY = {
 export function initFirebase(): boolean {
   if (firebaseApp) return true;
 
+  // Bypass SSL cert check in dev (Node.js can't verify Google's OAuth2 cert on some systems)
+  if (process.env.NODE_ENV !== 'production') {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
   try {
     let credential: admin.credential.Credential | undefined;
 
@@ -108,7 +113,7 @@ export async function sendPush(
     await admin.messaging(firebaseApp).send({
       token: fcmToken,
       notification: { title, body },
-      data: data ?? {},
+      data: { ...(data ?? {}), title, body },
       android: {
         priority: 'high',
         notification: { channelId: 'lipacart_orders', sound: 'default' },
@@ -117,7 +122,17 @@ export async function sendPush(
         payload: { aps: { sound: 'default', badge: 1 } },
       },
       webpush: {
-        notification: { icon: '/favicon.png' },
+        headers: { Urgency: 'high' },
+        notification: {
+          title,
+          body,
+          icon: '/favicon.png',
+          badge: '/favicon.png',
+          requireInteraction: true,
+        },
+        fcmOptions: {
+          link: '/',
+        },
       },
     });
     return true;
@@ -193,7 +208,11 @@ export async function notifyOrderStatusChange(
 
     // Send push (only if Firebase is ready and token exists)
     if (isFirebaseReady() && customerUser.fcm_token) {
-      await sendPush(customerUser.fcm_token, title, body, data);
+      console.log(`[notifications] Sending push to user ${customerUser.id}, token: ${customerUser.fcm_token.slice(0, 20)}...`);
+      const sent = await sendPush(customerUser.fcm_token, title, body, data);
+      console.log(`[notifications] Push ${sent ? 'sent successfully' : 'FAILED'}`);
+    } else {
+      console.warn(`[notifications] Skipping push — firebase=${isFirebaseReady()}, token=${!!customerUser.fcm_token}`);
     }
   } catch (err: any) {
     console.error('[notifications] notifyOrderStatusChange error:', err?.message);

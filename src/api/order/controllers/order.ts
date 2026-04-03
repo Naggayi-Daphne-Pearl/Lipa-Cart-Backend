@@ -322,11 +322,17 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
         // Recalculate total based on found items with actual prices
         try {
-          const orderItems: any[] = await strapi.db.query('api::order-item.order-item').findMany({
-            where: { id: { $in: (await strapi.db.connection.raw(
-              `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`, [order.id]
-            )).map((r: any) => r.order_item_id) } },
-          });
+          const linkResult = await strapi.db.connection.raw(
+            `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`, [order.id]
+          );
+          const linkRows = linkResult?.rows || linkResult || [];
+          const itemIds = Array.isArray(linkRows) ? linkRows.map((r: any) => r.order_item_id) : [];
+
+          const orderItems: any[] = itemIds.length > 0
+            ? await strapi.db.query('api::order-item.order-item').findMany({
+                where: { id: { $in: itemIds } },
+              })
+            : [];
 
           let actualSubtotal = 0;
           for (const item of orderItems) {

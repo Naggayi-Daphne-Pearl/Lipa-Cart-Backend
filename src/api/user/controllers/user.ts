@@ -33,9 +33,23 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
    */
   async registerDevice(ctx: any) {
     try {
-      const authUser = ctx.state.user;
-      if (!authUser) {
+      // Manual JWT verification (route has auth: false to bypass permission system)
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader?.startsWith('Bearer ')) {
         return ctx.unauthorized('You must be authenticated');
+      }
+      const token = authHeader.replace('Bearer ', '');
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid or expired token');
+      }
+      const authUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!authUser) {
+        return ctx.unauthorized('User not found');
       }
 
       const { fcm_token } = ctx.request.body;
@@ -56,6 +70,7 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
         data: { fcm_token },
       });
 
+      console.log(`[notifications] FCM token registered for user ${customUser.id}: ${fcm_token.slice(0, 20)}...`);
       ctx.body = { ok: true };
     } catch (error) {
       console.error('Error registering device token:', error);

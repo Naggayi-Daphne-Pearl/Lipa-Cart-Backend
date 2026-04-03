@@ -6,7 +6,7 @@ import type { Core } from '@strapi/strapi';
  */
 
 interface RolePermission {
-  action: 'find' | 'findOne' | 'create' | 'update' | 'delete';
+  action: string;
   contentType: string;
 }
 

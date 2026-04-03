@@ -1,28 +1,32 @@
 export default {
   routes: [
-    // Custom endpoint: Get current user profile (requires auth)
-    {
-      method: 'GET',
-      path: '/user/me',
-      handler: 'user.me',
-    },
-    // Register FCM device token for push notifications (requires auth)
+    // Register FCM device token for push notifications (manual JWT check)
     {
       method: 'POST',
       path: '/user/register-device',
       handler: 'user.registerDevice',
+      config: { auth: false },
     },
-    // Delete user account (requires auth)
+    // Delete user account (manual JWT check)
     {
       method: 'DELETE',
       path: '/user/delete-account',
       handler: 'user.deleteAccount',
+      config: { auth: false },
     },
-    // Change phone number with OTP verification (requires auth)
+    // Change phone number with OTP verification (manual JWT check)
     {
       method: 'POST',
       path: '/user/change-phone',
       handler: 'user.changePhone',
+      config: { auth: false },
+    },
+    // Get current user profile (manual JWT check)
+    {
+      method: 'GET',
+      path: '/user/me',
+      handler: 'user.me',
+      config: { auth: false },
     },
     // Admin endpoints: User management (manually check auth inside handler)
     {

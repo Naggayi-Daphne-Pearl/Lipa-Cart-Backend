@@ -594,7 +594,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       if (!strapiUser) return ctx.unauthorized('User not found');
 
       const { id } = ctx.params;
-      const { status } = ctx.request.body;
+      const { status, delivery_proof_url } = ctx.request.body;
 
       const allowedTransitions: Record<string, string[]> = {
         'rider_assigned': ['in_transit'],
@@ -632,7 +632,10 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       // Build update data with timestamps
       const updateData: any = { status };
       if (status === 'in_transit') updateData.picked_up_at = new Date();
-      if (status === 'delivered') updateData.delivered_at = new Date();
+      if (status === 'delivered') {
+        updateData.delivered_at = new Date();
+        if (delivery_proof_url) updateData.delivery_proof_url = delivery_proof_url;
+      }
 
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: updateData,

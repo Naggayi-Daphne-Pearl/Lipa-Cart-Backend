@@ -14,6 +14,12 @@ export default {
       config: { auth: false },
     },
     {
+      method: 'PATCH',
+      path: '/order-items/:id/substitution-response',
+      handler: 'order-item.respondToSubstitution',
+      config: { auth: false },
+    },
+    {
       method: 'POST',
       path: '/order-items/bulk',
       handler: 'order-item.bulkCreate',

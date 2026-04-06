@@ -22,8 +22,16 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         },
         delivery_address: true,
         customer: true,
-        shopper: true,
-        rider: true,
+        shopper: {
+          populate: {
+            shopper: true,
+          },
+        },
+        rider: {
+          populate: {
+            rider: true,
+          },
+        },
       };
 
       const result = await super.find(ctx);
@@ -50,11 +58,23 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         });
       }
 
-      // Always include order_items in populate
+      // Always include related data for tracking and order details
       if (typeof ctx.query.populate === 'object') {
         ctx.query.populate.order_items = {
           populate: {
-            product: true,  // Just populate the product relation, don't specify fields
+            product: true,
+          },
+        };
+        ctx.query.populate.delivery_address = true;
+        ctx.query.populate.customer = true;
+        ctx.query.populate.shopper = {
+          populate: {
+            shopper: true,
+          },
+        };
+        ctx.query.populate.rider = {
+          populate: {
+            rider: true,
           },
         };
       }

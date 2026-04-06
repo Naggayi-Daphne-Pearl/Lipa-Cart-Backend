@@ -110,6 +110,8 @@ export async function sendPush(
   if (!firebaseApp || !fcmToken) return false;
 
   try {
+    const route = data?.route || '/';
+
     await admin.messaging(firebaseApp).send({
       token: fcmToken,
       notification: { title, body },
@@ -131,7 +133,7 @@ export async function sendPush(
           requireInteraction: true,
         },
         fcmOptions: {
-          link: '/',
+          link: route,
         },
       },
     });
@@ -201,7 +203,12 @@ export async function notifyOrderStatusChange(
 
     const title = template.title;
     const body = template.body(orderNumber);
-    const data = { type: 'order_status', orderId: String(orderId), status: newStatus };
+    const data = {
+      type: 'order_status',
+      orderId: String(orderId),
+      status: newStatus,
+      route: '/customer/orders',
+    };
 
     // Save to inbox (always, even if push fails)
     await saveNotification(strapi, customerUser.id, title, body, 'order_status', orderNumber, data);
@@ -234,7 +241,11 @@ export async function notifyShoppersNewTask(
 
     const title = SHOPPER_NEW_TASK.title;
     const body = SHOPPER_NEW_TASK.body(orderNumber);
-    const data = { type: 'new_task', orderNumber };
+    const data = {
+      type: 'new_task',
+      orderNumber,
+      route: '/shopper/available-tasks',
+    };
 
     for (const shopper of shoppers) {
       const userId = shopper.user?.id;
@@ -273,7 +284,11 @@ export async function notifyRidersNewDelivery(
 
     const title = RIDER_NEW_DELIVERY.title;
     const body = RIDER_NEW_DELIVERY.body(orderNumber);
-    const data = { type: 'new_delivery', orderNumber };
+    const data = {
+      type: 'new_delivery',
+      orderNumber,
+      route: '/rider/available-deliveries',
+    };
 
     for (const rider of riders) {
       const userId = rider.user?.id;

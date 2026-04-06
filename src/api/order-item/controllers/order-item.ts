@@ -87,10 +87,17 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
       const results = [];
       const failed = [];
+      const newSubstitutes = [];
 
       for (const itemUpdate of items) {
         try {
-          const { documentId, found, actual_price, shopper_notes } = itemUpdate;
+          const {
+            documentId,
+            found,
+            actual_price,
+            shopper_notes,
+            substitution_approved,
+          } = itemUpdate;
 
           // Support both documentId (string) and numeric id lookups
           let item: any = null;
@@ -111,10 +118,25 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             continue;
           }
 
+          const isNewSubstituteSuggestion =
+            typeof shopper_notes === 'string' &&
+            shopper_notes.startsWith('SUBSTITUTE:') &&
+            item.shopper_notes !== shopper_notes;
+
+          if (isNewSubstituteSuggestion) {
+            newSubstitutes.push({
+              documentId: String(documentId),
+              shopper_notes,
+            });
+          }
+
           const updateData: any = {};
           if (typeof found === 'boolean') updateData.found = found;
           if (actual_price !== undefined) updateData.actual_price = actual_price;
           if (shopper_notes !== undefined) updateData.shopper_notes = shopper_notes;
+          if (typeof substitution_approved === 'boolean') {
+            updateData.substitution_approved = substitution_approved;
+          }
 
           const updated = await strapi.entityService.update('api::order-item.order-item', item.id, {
             data: updateData,
@@ -125,15 +147,13 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         }
       }
 
-      // Send notification for substitutes
-      const substitutes = items.filter((i: any) =>
-        i.shopper_notes && typeof i.shopper_notes === 'string' && i.shopper_notes.startsWith('SUBSTITUTE:')
-      );
+      // Send notification only for brand-new substitute suggestions
+      const substitutes = newSubstitutes;
       if (substitutes.length > 0) {
         try {
           // Find the order for these items to get the customer
           const firstItem: any = await strapi.db.query('api::order-item.order-item').findOne({
-            where: { documentId: items[0].documentId },
+            where: { documentId: substitutes[0].documentId },
             populate: ['order'],
           });
           if (firstItem?.order) {
@@ -150,8 +170,12 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
                 await sendPush(
                   customer.fcm_token,
                   'Substitute Suggested',
-                  `Your shopper suggested: ${subNames}. Check your order for details.`,
-                  { type: 'order_status', orderId: order.documentId },
+                  `Your shopper suggested: ${subNames}. Review it before shopping is completed.`,
+                  {
+                    type: 'substitute_suggestion',
+                    orderId: String(order.documentId ?? order.id),
+                    route: '/customer/orders',
+                  },
                 ).catch(() => {});
               }
               await saveNotification(
@@ -176,6 +200,116 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
     } catch (error) {
       console.error('Batch update error:', error);
       ctx.throw(500, 'Failed to batch update items');
+    }
+  },
+
+  /**
+   * Customer approves or rejects a suggested substitute during shopping.
+   * PATCH /api/order-items/:id/substitution-response
+   */
+  async respondToSubstitution(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+      });
+      if (!strapiUser) return ctx.unauthorized('User not found');
+
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can respond to substitute suggestions');
+      }
+
+      const { id } = ctx.params;
+      const { approved } = ctx.request.body;
+      if (typeof approved !== 'boolean') {
+        return ctx.badRequest('approved must be a boolean');
+      }
+
+      const item: any = await strapi.db.query('api::order-item.order-item').findOne({
+        where: { documentId: id },
+        populate: {
+          order: {
+            populate: ['customer', 'shopper'],
+          },
+        },
+      });
+
+      if (!item) return ctx.notFound('Order item not found');
+      if (!item.shopper_notes || !String(item.shopper_notes).startsWith('SUBSTITUTE:')) {
+        return ctx.badRequest('This item does not have a pending substitute suggestion');
+      }
+
+      const order = item.order;
+      if (!order || order.customer?.id !== customUser.id) {
+        return ctx.forbidden('You do not have permission to respond to this substitute');
+      }
+
+      const updated = await strapi.entityService.update('api::order-item.order-item', item.id, {
+        data: {
+          substitution_approved: approved,
+        },
+        populate: {
+          product: true,
+          order: {
+            populate: ['customer', 'shopper'],
+          },
+        },
+      });
+
+      const shopperUserId = order.shopper?.id;
+      if (shopperUserId) {
+        const shopperUser: any = await strapi.db.query('api::user.user').findOne({
+          where: { id: shopperUserId },
+        });
+
+        if (shopperUser) {
+          const title = approved ? 'Substitute Approved' : 'Substitute Rejected';
+          const body = approved
+            ? `Customer approved your substitute for ${item.product_name}.`
+            : `Customer rejected your substitute for ${item.product_name}.`;
+          const data = {
+            type: 'substitute_response',
+            route: '/shopper/active-tasks',
+            orderId: String(order.documentId ?? order.id),
+            itemId: String(item.documentId ?? item.id),
+            approved: String(approved),
+          };
+
+          await saveNotification(
+            strapi,
+            shopperUser.id,
+            title,
+            body,
+            'system',
+            order.order_number,
+            data,
+          ).catch(() => {});
+
+          if (shopperUser.fcm_token && isFirebaseReady()) {
+            await sendPush(shopperUser.fcm_token, title, body, data).catch(() => {});
+          }
+        }
+      }
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Respond to substitution error:', error);
+      ctx.throw(500, 'Failed to update substitute response');
     }
   },
 

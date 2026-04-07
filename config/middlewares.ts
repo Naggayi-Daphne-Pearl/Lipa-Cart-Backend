@@ -1,15 +1,35 @@
-export default [
+export default ({ env }) => [
   'strapi::logger',
   'strapi::errors',
   'global::sentry',
   'strapi::security',
-  'strapi::cors',
+  {
+    name: 'strapi::cors',
+    config: {
+      origin: [
+        env('FRONTEND_URL', 'https://www.lipacart.com'),
+        'https://lipacart.com',
+        'https://www.lipacart.com',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:7357',
+        'http://127.0.0.1:7357',
+        'http://localhost:7361',
+        'http://127.0.0.1:7361',
+      ],
+      credentials: true,
+      keepHeaderOnError: true,
+      headers: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
+    },
+  },
   'strapi::poweredBy',
   'strapi::query',
   'strapi::body',
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
-  'global::allow-bulk-orders',  // Custom middleware to allow bulk order items endpoint
+  'global::allow-bulk-orders',
   'global::auto-assign-role',
 ];

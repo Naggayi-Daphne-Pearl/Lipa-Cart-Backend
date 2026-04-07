@@ -64,6 +64,19 @@
     "fcm_token": {
       "type": "text"
     },
+    "remember_me": {
+      "type": "boolean",
+      "default": true
+    },
+    "refresh_token_hash": {
+      "type": "text"
+    },
+    "refresh_token_expires_at": {
+      "type": "datetime"
+    },
+    "session_revoked_at": {
+      "type": "datetime"
+    },
     "orders_as_customer": {
       "type": "relation",
       "relation": "oneToMany",

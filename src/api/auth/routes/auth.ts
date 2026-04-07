@@ -32,6 +32,7 @@ export default {
     },
     // Auth routes require valid JWT (default auth behavior)
     { method: 'POST', path: '/auth/refresh', handler: 'auth.refresh', config: { auth: false } },
+    { method: 'POST', path: '/auth/logout', handler: 'auth.logout', config: { auth: false } },
     { method: 'GET', path: '/auth/me', handler: 'auth.me', config: { auth: false } },
   ],
 };

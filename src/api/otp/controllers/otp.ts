@@ -1,5 +1,6 @@
 import type { Core } from '@strapi/strapi';
 import { createAuthUserWithRole } from '../../../services/role-helper';
+import { issueSessionTokens } from '../../../services/session-token';
 
 export default {
   async request(ctx: any) {
@@ -31,7 +32,7 @@ export default {
 
   async verify(ctx: any) {
     try {
-      const { phone, otp } = ctx.request.body;
+      const { phone, otp, rememberMe = true } = ctx.request.body;
 
       if (!phone || !otp) {
         return ctx.badRequest('Phone and OTP are required');
@@ -75,7 +76,7 @@ export default {
         .query('api::user.user')
         .findOne({
           where: { phone },
-          populate: { profile_photo: true },
+          populate: { profile_photo: true, customer: true },
         });
 
       if (!customUser) {
@@ -85,25 +86,58 @@ export default {
             user_type: 'customer',
             is_active: true,
           },
-          populate: { profile_photo: true },
+          populate: { profile_photo: true, customer: true },
         });
       }
 
-      // Generate JWT (for auth user)
-      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
-        id: authUser.id,
-      });
+      let customerId = null;
+      if (customUser.customer?.id) {
+        customerId = customUser.customer.id;
+      } else {
+        try {
+          const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
+          const newCustomer: any = await strapi.entityService.create(
+            'api::customer.customer',
+            {
+              data: {
+                user: customUser.id,
+                referral_code: referralCode,
+                total_orders: 0,
+              },
+            },
+          );
+          customerId = newCustomer.id;
+        } catch (err) {
+          console.error('Failed to create customer record during OTP verify:', err);
+        }
+      }
+
+      const session = await issueSessionTokens(
+        strapi,
+        ctx,
+        authUser,
+        customUser,
+        rememberMe !== false,
+      );
 
       // Return custom user's data as primary identity
       ctx.body = {
-        jwt,
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
         user: {
-          id: customUser.documentId,
+          id: customUser.id,
+          document_id: customUser.documentId,
           phone: customUser.phone,
           name: customUser.name ?? null,
           email: customUser.email ?? null,
           user_type: customUser.user_type,
           profile_photo: customUser.profile_photo?.url ?? null,
+          customer_id: customerId,
         },
       };
     } catch (error) {

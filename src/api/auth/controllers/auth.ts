@@ -1,5 +1,10 @@
 import type { Core } from '@strapi/strapi';
 import { createAuthUserWithRole } from '../../../services/role-helper';
+import {
+  issueSessionTokens,
+  resolveSessionUser,
+  revokeSession,
+} from '../../../services/session-token';
 
 export default {
   /**
@@ -8,7 +13,8 @@ export default {
    */
   async signup(ctx: any) {
     try {
-      const { phone, password, name, email, userType } = ctx.request.body;
+      const { phone, password, name, email, userType, rememberMe = true } =
+        ctx.request.body;
 
       // Validate required fields
       if (!phone || !password) {
@@ -119,13 +125,22 @@ export default {
         }
       }
 
-      // Generate JWT
-      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
-        id: authUser.id,
-      });
+      const session = await issueSessionTokens(
+        strapi,
+        ctx,
+        authUser,
+        customUser,
+        rememberMe !== false,
+      );
 
       ctx.body = {
-        jwt,
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
         user: {
           id: customUser.id,
           document_id: customUser.documentId,
@@ -151,7 +166,7 @@ export default {
    */
   async login(ctx: any) {
     try {
-      const { phone, password } = ctx.request.body;
+      const { phone, password, rememberMe = true } = ctx.request.body;
 
       // Validate required fields
       if (!phone || !password) {
@@ -310,13 +325,22 @@ export default {
         }
       }
 
-      // Generate JWT
-      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
-        id: authUser.id,
-      });
+      const session = await issueSessionTokens(
+        strapi,
+        ctx,
+        authUser,
+        user,
+        rememberMe !== false,
+      );
 
       ctx.body = {
-        jwt,
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
         user: {
           id: user.id,
           document_id: user.documentId,
@@ -337,45 +361,27 @@ export default {
   },
 
   /**
-   * Refresh JWT token
-   * Takes a valid (but potentially expiring) JWT and issues a new one
+   * Refresh JWT token using either a valid refresh cookie/token or a still-valid
+   * access token as a fallback. Each successful refresh rotates the refresh token.
    */
   async refresh(ctx: any) {
     try {
-      // Manual JWT verification (auth: false on route)
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let user: any;
-      try {
-        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
-      } catch (err) {
-        return ctx.unauthorized('Invalid or expired token');
+      const sessionUser = await resolveSessionUser(strapi, ctx);
+      if (!sessionUser) {
+        return ctx.unauthorized('Refresh token expired or invalid');
       }
 
-      if (!user) {
-        return ctx.unauthorized('No user found');
-      }
-
-      // Issue new JWT token
-      const jwt = strapi.plugins['users-permissions'].services.jwt.issue({
-        id: user.id,
-      });
-
-      // Fetch custom user profile for response
-      const customUser: any = await strapi
-        .query('api::user.user')
-        .findOne({
-          where: { phone: user.username },
-          populate: { profile_photo: true, customer: true },
-        });
+      const { authUser, customUser, rememberMe } = sessionUser;
+      const session = await issueSessionTokens(
+        strapi,
+        ctx,
+        authUser,
+        customUser,
+        rememberMe,
+      );
 
       const customerId = customUser?.customer?.id ?? null;
 
-      // Get shopper ID and KYC status if user is a shopper
       let shopperId = null;
       let kycStatus = 'not_submitted';
       if (customUser?.user_type === 'shopper') {
@@ -384,7 +390,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
-              [customUser.id]
+              [customUser.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -392,8 +398,7 @@ export default {
                 where: { id: rows[0].shopper_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           if (!shopper) {
             const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
@@ -402,14 +407,13 @@ export default {
             });
             shopper = allShoppers.find((s: any) =>
               s.user?.id === customUser.id ||
-              s.user?.documentId === customUser.documentId
+              s.user?.documentId === customUser.documentId,
             );
           }
 
           if (shopper) {
             shopperId = shopper.documentId ?? String(shopper.id);
             kycStatus = shopper.kyc_status ?? 'not_submitted';
-            // If admin manually set is_verified=true via Strapi panel, treat as approved
             if (shopper.is_verified === true && kycStatus !== 'approved') {
               kycStatus = 'approved';
             }
@@ -419,7 +423,6 @@ export default {
         }
       }
 
-      // Get rider ID and KYC status if user is a rider
       let riderId = null;
       let riderKycStatus = 'not_submitted';
       if (customUser?.user_type === 'rider') {
@@ -428,7 +431,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
-              [customUser.id]
+              [customUser.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -436,8 +439,7 @@ export default {
                 where: { id: rows[0].rider_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           if (!rider) {
             const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
@@ -446,7 +448,7 @@ export default {
             });
             rider = allRiders.find((r: any) =>
               r.user?.id === customUser.id ||
-              r.user?.documentId === customUser.documentId
+              r.user?.documentId === customUser.documentId,
             );
           }
 
@@ -463,34 +465,48 @@ export default {
       }
 
       ctx.body = {
-        jwt,
-        user: customUser
-          ? {
-              id: customUser.id,
-              document_id: customUser.documentId,
-              phone: customUser.phone,
-              name: customUser.name ?? null,
-              email: customUser.email ?? null,
-              user_type: customUser.user_type,
-              profile_photo: customUser.profile_photo?.url ?? null,
-              customer_id: customerId,
-              ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus }),
-              ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus }),
-            }
-          : {
-              id: user.id,
-              document_id: null,
-              phone: user.username,
-              name: null,
-              email: user.email,
-              user_type: 'customer',
-              profile_photo: null,
-              customer_id: null,
-            },
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
+        user: {
+          id: customUser.id,
+          document_id: customUser.documentId,
+          phone: customUser.phone,
+          name: customUser.name ?? null,
+          email: customUser.email ?? null,
+          user_type: customUser.user_type,
+          profile_photo: customUser.profile_photo?.url ?? null,
+          customer_id: customerId,
+          ...(customUser.user_type === 'shopper' && {
+            shopper_id: shopperId,
+            kyc_status: kycStatus,
+          }),
+          ...(customUser.user_type === 'rider' && {
+            rider_id: riderId,
+            kyc_status: riderKycStatus,
+          }),
+        },
       };
     } catch (error) {
       console.error('Token refresh error:', error);
       ctx.throw(500, 'Failed to refresh token');
+    }
+  },
+
+  /**
+   * Revoke the current refresh session and clear the refresh cookie.
+   */
+  async logout(ctx: any) {
+    try {
+      await revokeSession(strapi, ctx);
+      ctx.body = { success: true };
+    } catch (error) {
+      console.error('Logout error:', error);
+      ctx.throw(500, 'Failed to log out');
     }
   },
 

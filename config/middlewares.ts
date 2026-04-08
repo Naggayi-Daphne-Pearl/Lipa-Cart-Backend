@@ -28,6 +28,7 @@ export default ({ env }) => [
   'strapi::query',
   'strapi::body',
   'strapi::session',
+  'global::normalize-admin-url',
   'strapi::favicon',
   'strapi::public',
   'global::allow-bulk-orders',

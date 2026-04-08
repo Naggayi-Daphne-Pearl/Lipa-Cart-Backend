@@ -17,6 +17,22 @@ export default {
         auth: false, // No JWT required
       },
     },
+    {
+      method: 'POST',
+      path: '/google-auth/signin',
+      handler: 'auth.google',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'POST',
+      path: '/google-auth/complete-profile',
+      handler: 'auth.completeCustomerProfile',
+      config: {
+        auth: false,
+      },
+    },
     // Password reset (no auth required)
     {
       method: 'POST',

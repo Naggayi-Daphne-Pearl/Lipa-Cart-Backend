@@ -1,5 +1,6 @@
 import type { Core } from '@strapi/strapi';
 import { createAuthUserWithRole } from '../../../services/role-helper';
+import { verifyGoogleIdToken } from '../../../services/google-auth';
 import {
   issueSessionTokens,
   resolveSessionUser,
@@ -357,6 +358,487 @@ export default {
     } catch (error) {
       console.error('Login error:', error);
       ctx.throw(500, 'Failed to login');
+    }
+  },
+
+  /**
+   * Sign in with a Google ID token and issue the same session cookies/JWTs
+   * used by the existing auth flow.
+   */
+  async google(ctx: any) {
+    try {
+      const { idToken, rememberMe = true, userType = 'customer' } =
+        ctx.request.body ?? {};
+
+      if (!idToken) {
+        return ctx.badRequest('Google ID token is required');
+      }
+
+      const googleProfile = await verifyGoogleIdToken(idToken);
+      const email = googleProfile.email!.toLowerCase();
+      const normalizedUserType = (userType || 'customer').toLowerCase();
+
+      if (normalizedUserType !== 'customer') {
+        return ctx.badRequest(
+          'Google sign-in is currently available for customer accounts only.',
+        );
+      }
+
+      let userMatches: any = await strapi.entityService.findMany(
+        'api::user.user',
+        {
+          filters: { email: { $eqi: email } } as any,
+          populate: { profile_photo: true, customer: true },
+          limit: 1,
+        } as any,
+      );
+
+      let user: any = userMatches?.[0] ?? null;
+      let authUserByEmail: any = null;
+
+      if (!user) {
+        authUserByEmail = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({
+            where: { email },
+            populate: { role: true },
+          });
+
+        if (authUserByEmail?.username) {
+          userMatches = await strapi.entityService.findMany('api::user.user', {
+            filters: { phone: authUserByEmail.username },
+            populate: { profile_photo: true, customer: true },
+            limit: 1,
+          } as any);
+          user = userMatches?.[0] ?? null;
+        }
+      }
+
+      const hasValidPhoneNumber = (value: string | null | undefined) =>
+        typeof value === 'string' && /^\+256\d{9}$/.test(value);
+
+      if (!user) {
+        let authUser = authUserByEmail;
+        const pendingPhone = hasValidPhoneNumber(authUser?.username)
+          ? authUser.username
+          : `google_${googleProfile.sub ?? Date.now().toString(36)}`;
+
+        if (!authUser) {
+          authUser = await strapi
+            .query('plugin::users-permissions.user')
+            .findOne({
+              where: { username: pendingPhone },
+              populate: { role: true },
+            });
+        }
+
+        if (!authUser) {
+          authUser = await createAuthUserWithRole(strapi, {
+            username: pendingPhone,
+            email,
+            userType: 'customer',
+            confirmed: true,
+          });
+        }
+
+        if (!authUser) {
+          ctx.throw(500, 'Failed to prepare Google sign-in');
+        }
+
+        user = await strapi.entityService.create('api::user.user', {
+          data: {
+            phone: pendingPhone,
+            name: googleProfile.name ?? null,
+            email,
+            user_type: 'customer',
+            is_active: true,
+          },
+          populate: { profile_photo: true, customer: true },
+        } as any);
+
+        const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
+        const customer = await strapi.entityService.create(
+          'api::customer.customer',
+          {
+            data: {
+              user: user.id,
+              referral_code: referralCode,
+              total_orders: 0,
+            },
+          },
+        );
+
+        const session = await issueSessionTokens(
+          strapi,
+          ctx,
+          authUser,
+          user,
+          rememberMe !== false,
+        );
+
+        ctx.body = {
+          jwt: session.jwt,
+          refreshToken: session.refreshToken,
+          session: {
+            rememberMe: session.rememberMe,
+            accessTokenExpiresIn: session.accessTokenExpiresIn,
+            refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+          },
+          user: {
+            id: user.id,
+            document_id: user.documentId,
+            phone: null,
+            name: user.name ?? googleProfile.name ?? null,
+            email: user.email ?? email,
+            user_type: 'customer',
+            profile_photo: user.profile_photo?.url ?? null,
+            customer_id: customer.id,
+            needs_phone_number: true,
+          },
+        };
+        return;
+      }
+
+      if (user.user_type !== 'customer') {
+        return ctx.badRequest(
+          'Google sign-in is currently available for customer accounts only. Use phone sign-in for shopper and rider accounts.',
+        );
+      }
+
+      const syncData: Record<string, unknown> = {};
+      if (!user.email) {
+        syncData.email = email;
+      }
+      if (!user.name && googleProfile.name) {
+        syncData.name = googleProfile.name;
+      }
+
+      if (Object.keys(syncData).length > 0) {
+        await strapi.entityService.update('api::user.user', user.id, {
+          data: syncData as any,
+        });
+
+        const refreshedUsers: any = await strapi.entityService.findMany(
+          'api::user.user',
+          {
+            filters: { phone: user.phone },
+            populate: { profile_photo: true, customer: true },
+            limit: 1,
+          } as any,
+        );
+        user = refreshedUsers?.[0] ?? user;
+      }
+
+      let authUser = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({
+          where: { username: user.phone },
+          populate: { role: true },
+        });
+
+      if (!authUser && user.email) {
+        authUser = await strapi.query('plugin::users-permissions.user').findOne(
+          {
+            where: { email: user.email.toLowerCase() },
+            populate: { role: true },
+          },
+        );
+      }
+
+      if (!authUser) {
+        authUser = await createAuthUserWithRole(strapi, {
+          username: user.phone,
+          email: user.email || email,
+          userType: (user.user_type || normalizedUserType) as
+            | 'customer'
+            | 'shopper'
+            | 'rider'
+            | 'admin',
+          confirmed: true,
+        });
+      }
+
+      if (!authUser) {
+        ctx.throw(500, 'Failed to prepare Google sign-in');
+      }
+
+      if (authUser.blocked) {
+        return ctx.badRequest('Your account has been blocked');
+      }
+
+      let customerId = null;
+      if (user.user_type === 'customer') {
+        if (user.customer) {
+          customerId = user.customer.id;
+        } else {
+          try {
+            const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
+            const newCustomer = await strapi.entityService.create(
+              'api::customer.customer',
+              {
+                data: {
+                  user: user.id,
+                  referral_code: referralCode,
+                  total_orders: 0,
+                },
+              },
+            );
+            customerId = newCustomer.id;
+          } catch (err) {
+            console.error('Failed to create customer record:', err);
+          }
+        }
+      }
+
+      let shopperId = null;
+      let kycStatus = 'not_submitted';
+      if (user.user_type === 'shopper') {
+        try {
+          let shopper: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+              [user.id],
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              shopper = await strapi.db.query('api::shopper.shopper').findOne({
+                where: { id: rows[0].shopper_id },
+              });
+            }
+          } catch (linkErr: any) {}
+
+          if (!shopper) {
+            const allShoppers: any = await strapi
+              .db.query('api::shopper.shopper')
+              .findMany({
+                populate: ['user'],
+                limit: 200,
+              });
+            shopper = allShoppers.find(
+              (s: any) =>
+                s.user?.id === user.id ||
+                s.user?.documentId === user.documentId,
+            );
+          }
+
+          if (shopper) {
+            shopperId = shopper.documentId ?? String(shopper.id);
+            kycStatus = shopper.kyc_status ?? 'not_submitted';
+            if (shopper.is_verified === true && kycStatus !== 'approved') {
+              kycStatus = 'approved';
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch shopper record:', err);
+        }
+      }
+
+      let riderId = null;
+      let riderKycStatus = 'not_submitted';
+      if (user.user_type === 'rider') {
+        try {
+          let rider: any = null;
+          try {
+            const linkResult: any = await strapi.db.connection.raw(
+              `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+              [user.id],
+            );
+            const rows = linkResult?.rows || linkResult;
+            if (rows && rows.length > 0) {
+              rider = await strapi.db.query('api::rider.rider').findOne({
+                where: { id: rows[0].rider_id },
+              });
+            }
+          } catch (linkErr: any) {}
+
+          if (!rider) {
+            const allRiders: any = await strapi
+              .db.query('api::rider.rider')
+              .findMany({
+                populate: ['user'],
+                limit: 200,
+              });
+            rider = allRiders.find(
+              (r: any) =>
+                r.user?.id === user.id || r.user?.documentId === user.documentId,
+            );
+          }
+
+          if (rider) {
+            riderId = rider.documentId ?? String(rider.id);
+            riderKycStatus = rider.kyc_status ?? 'not_submitted';
+            if (rider.is_verified === true && riderKycStatus !== 'approved') {
+              riderKycStatus = 'approved';
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch rider record:', err);
+        }
+      }
+
+      const session = await issueSessionTokens(
+        strapi,
+        ctx,
+        authUser,
+        user,
+        rememberMe !== false,
+      );
+
+      ctx.body = {
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
+        user: {
+          id: user.id,
+          document_id: user.documentId,
+          phone: hasValidPhoneNumber(user.phone) ? user.phone : null,
+          name: user.name ?? googleProfile.name ?? null,
+          email: user.email ?? email,
+          user_type: user.user_type,
+          profile_photo: user.profile_photo?.url ?? null,
+          customer_id: customerId,
+          needs_phone_number: !hasValidPhoneNumber(user.phone),
+          ...(user.user_type === 'shopper' && {
+            shopper_id: shopperId,
+            kyc_status: kycStatus,
+          }),
+          ...(user.user_type === 'rider' && {
+            rider_id: riderId,
+            kyc_status: riderKycStatus,
+          }),
+        },
+      };
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      ctx.throw(500, 'Failed to sign in with Google');
+    }
+  },
+
+  /**
+   * Complete a lightweight Google customer profile by attaching a real phone
+   * number after the user is already authenticated.
+   */
+  async completeCustomerProfile(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      const token = authHeader.slice(7);
+      let payload: any;
+      try {
+        payload = await strapi.plugins['users-permissions'].services.jwt.verify(
+          token,
+        );
+      } catch (err) {
+        return ctx.unauthorized('Invalid or expired token');
+      }
+
+      const authUser: any = await strapi
+        .query('plugin::users-permissions.user')
+        .findOne({
+          where: { id: payload.id },
+          populate: { role: true },
+        });
+
+      if (!authUser) {
+        return ctx.unauthorized('User not found');
+      }
+
+      const { phone, name, email } = ctx.request.body ?? {};
+      if (!phone) {
+        return ctx.badRequest('Phone number is required');
+      }
+
+      if (!phone.startsWith('+256') || phone.length !== 13) {
+        return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX');
+      }
+
+      let customUsers: any = await strapi.entityService.findMany(
+        'api::user.user',
+        {
+          filters: { phone: authUser.username },
+          populate: { profile_photo: true, customer: true },
+          limit: 1,
+        } as any,
+      );
+
+      let customUser = customUsers?.[0] ?? null;
+      if (!customUser && authUser.email) {
+        customUsers = await strapi.entityService.findMany('api::user.user', {
+          filters: { email: { $eqi: authUser.email } } as any,
+          populate: { profile_photo: true, customer: true },
+          limit: 1,
+        } as any);
+        customUser = customUsers?.[0] ?? null;
+      }
+
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      if (customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customer accounts can complete this flow');
+      }
+
+      const existingPhoneUsers: any = await strapi.entityService.findMany(
+        'api::user.user',
+        {
+          filters: { phone },
+          limit: 1,
+        } as any,
+      );
+      const existingPhoneUser = existingPhoneUsers?.[0] ?? null;
+      if (existingPhoneUser && existingPhoneUser.id !== customUser.id) {
+        return ctx.badRequest('This phone number is already registered');
+      }
+
+      await strapi.plugins['users-permissions'].services.user.edit(authUser.id, {
+        username: phone,
+        ...(email ? { email: email.toLowerCase() } : {}),
+      });
+
+      await strapi.entityService.update('api::user.user', customUser.id, {
+        data: {
+          phone,
+          ...(name ? { name } : {}),
+          ...(email ? { email: email.toLowerCase() } : {}),
+        } as any,
+      });
+
+      const refreshedUsers: any = await strapi.entityService.findMany(
+        'api::user.user',
+        {
+          filters: { phone },
+          populate: { profile_photo: true, customer: true },
+          limit: 1,
+        } as any,
+      );
+      const refreshedUser = refreshedUsers?.[0] ?? customUser;
+
+      ctx.body = {
+        success: true,
+        user: {
+          id: refreshedUser.id,
+          document_id: refreshedUser.documentId,
+          phone: refreshedUser.phone,
+          name: refreshedUser.name ?? null,
+          email: refreshedUser.email ?? null,
+          user_type: refreshedUser.user_type,
+          profile_photo: refreshedUser.profile_photo?.url ?? null,
+          customer_id: refreshedUser.customer?.id ?? null,
+          needs_phone_number: false,
+        },
+      };
+    } catch (error) {
+      console.error('Complete customer profile error:', error);
+      ctx.throw(500, 'Failed to save customer profile');
     }
   },
 

@@ -1221,7 +1221,11 @@ export interface ApiUserUser extends Struct.CollectionTypeSchema {
       Schema.Attribute.Unique;
     profile_photo: Schema.Attribute.Media<'images'>;
     publishedAt: Schema.Attribute.DateTime;
+    refresh_token_expires_at: Schema.Attribute.DateTime;
+    refresh_token_hash: Schema.Attribute.Text;
+    remember_me: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     rider: Schema.Attribute.Relation<'oneToOne', 'api::rider.rider'>;
+    session_revoked_at: Schema.Attribute.DateTime;
     shopper: Schema.Attribute.Relation<'oneToOne', 'api::shopper.shopper'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &

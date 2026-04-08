@@ -18,11 +18,13 @@ const parseRememberMe = (value: unknown, fallback = true): boolean => {
 
 const isSecureRequest = (ctx: any): boolean => {
   const forwardedProto = ctx.request.headers['x-forwarded-proto'];
-  if (typeof forwardedProto === 'string' && forwardedProto.includes('https')) {
-    return true;
+  if (typeof forwardedProto === 'string') {
+    return forwardedProto
+      .split(',')
+      .some((value) => value.trim().toLowerCase() === 'https');
   }
 
-  return ctx.secure || ctx.protocol === 'https' || process.env.NODE_ENV === 'production';
+  return Boolean(ctx.request?.secure || ctx.secure || ctx.protocol === 'https');
 };
 
 const hashRefreshToken = (value: string): string => {

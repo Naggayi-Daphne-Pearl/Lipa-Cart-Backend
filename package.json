@@ -32,7 +32,7 @@
     "react-router-dom": "^6.0.0",
     "styled-components": "^6.0.0",
     "firebase-admin": "^13.0.2",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^8.0.5",
     "africastalking": "^0.7.0"
   },
   "devDependencies": {

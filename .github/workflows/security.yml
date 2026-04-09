@@ -15,6 +15,10 @@ permissions:
   # gitleaks-action needs pull_requests: read to list commits on PR events;
   # without it the action returns 403 "Resource not accessible by integration".
   pull-requests: read
+  # CodeQL's upload-sarif (used by the Semgrep job) reads workflow-run metadata
+  # for telemetry; without `actions: read` it emits "Resource not accessible by
+  # integration" warnings on every run.
+  actions: read
 
 jobs:
   semgrep:

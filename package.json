@@ -22,7 +22,7 @@
     "@sentry/node": "^10.46.0",
     "@strapi/plugin-cloud": "5.33.4",
     "@strapi/plugin-users-permissions": "5.33.4",
-    "@strapi/strapi": "5.33.4",
+    "@strapi/strapi": "5.42.0",
     "better-sqlite3": "12.4.1",
     "fs-extra": "^10.0.0",
     "mime-types": "^2.1.27",

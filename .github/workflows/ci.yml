@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-build:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run check:types
+
+      - name: Build
+        run: npm run build
+        env:
+          # Strapi requires these at build time; fake values are fine for type/build check.
+          APP_KEYS: 'ci-build-key-1,ci-build-key-2'
+          API_TOKEN_SALT: 'ci-build-salt'
+          ADMIN_JWT_SECRET: 'ci-build-admin-jwt-secret'
+          TRANSFER_TOKEN_SALT: 'ci-build-transfer-salt'
+          JWT_SECRET: 'ci-build-jwt-secret'
+          ENCRYPTION_KEY: 'ci-build-encryption-key'
+
+  lint:
+    name: Lint (warn-only baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Phase 1: surface issues without blocking PRs. Flip `continue-on-error` to false
+    # once the existing codebase has been cleaned up (see CONTRIBUTING.md).
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check

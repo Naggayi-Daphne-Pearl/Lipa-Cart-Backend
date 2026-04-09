@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Africa/Kampala'
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    groups:
+      strapi:
+        patterns:
+          - '@strapi/*'
+          - 'strapi'
+      types:
+        patterns:
+          - '@types/*'
+      dev-dependencies:
+        dependency-type: 'development'
+        exclude-patterns:
+          - '@types/*'
+      production-minor-patch:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
+        exclude-patterns:
+          - '@strapi/*'
+          - 'strapi'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    labels:
+      - 'dependencies'
+      - 'ci'
+    commit-message:
+      prefix: 'chore(ci)'

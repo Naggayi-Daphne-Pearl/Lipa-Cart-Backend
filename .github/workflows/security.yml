@@ -11,14 +11,9 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   # gitleaks-action needs pull_requests: read to list commits on PR events;
   # without it the action returns 403 "Resource not accessible by integration".
   pull-requests: read
-  # CodeQL's upload-sarif (used by the Semgrep job) reads workflow-run metadata
-  # for telemetry; without `actions: read` it emits "Resource not accessible by
-  # integration" warnings on every run.
-  actions: read
 
 jobs:
   semgrep:
@@ -38,6 +33,7 @@ jobs:
       # without blocking the PR while the baseline is cleaned up. Unlike `|| true`,
       # this preserves the real exit code so internal Semgrep errors (exit 2) and
       # auth failures (exit 13) are still clearly visible in the step status.
+      # Findings print directly to the workflow log with file:line annotations.
       # Flip to `false` once the baseline is clean — see CONTRIBUTING.md.
       - name: Run Semgrep
         continue-on-error: true
@@ -47,16 +43,7 @@ jobs:
             --config p/javascript \
             --config p/typescript \
             --config p/nodejs \
-            --config p/secrets \
-            --sarif --output=semgrep.sarif
-
-      - name: Upload Semgrep SARIF
-        if: always()
-        # github/codeql-action/upload-sarif v3 — SHA-pinned.
-        uses: github/codeql-action/upload-sarif@3b1a19a80ab047f35cbb237b5bd9bdc1e14f166c
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
+            --config p/secrets
 
   gitleaks:
     name: Secret scan (gitleaks)

@@ -62,9 +62,9 @@ Every PR runs:
 - **Typecheck + build** (`.github/workflows/ci.yml`) — must pass.
 - **Lint** — currently in warn-only baseline mode. Do not introduce new
   warnings; fix any you see in files you touch.
-- **Semgrep SAST** — findings surface as PR annotations. Treat high/critical
-  findings as blockers unless there is a documented reason.
-- **CodeQL** — same as Semgrep.
+- **Semgrep SAST** — findings print to the workflow log with file:line
+  annotations. Treat high/critical findings as blockers unless there is a
+  documented reason.
 - **gitleaks** — blocks PRs that introduce secrets.
 - **npm audit** — not in CI yet. The current dependency tree has
   pre-existing high/critical vulns inherited from Strapi 5.33.4 that

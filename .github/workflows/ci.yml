@@ -45,12 +45,9 @@ jobs:
           ENCRYPTION_KEY: 'ci-build-encryption-key'
 
   lint:
-    name: Lint (warn-only baseline)
+    name: Lint & format
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Phase 1: surface issues without blocking PRs. Flip `continue-on-error` to false
-    # once the existing codebase has been cleaned up (see CONTRIBUTING.md).
-    continue-on-error: true
     steps:
       - name: Checkout
         # actions/checkout v4 — SHA-pinned for supply-chain safety; Dependabot will update.
@@ -66,8 +63,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ESLint is tuned so the existing baseline produces 0 errors / warnings only
+      # (see .eslintrc.cjs). New lint errors introduced by a PR should block it.
       - name: Run ESLint
         run: npm run lint
 
+      # Phase 1: the existing codebase has ~29 files that do not conform to
+      # Prettier's style. Rather than churn them in this PR, format:check is
+      # non-blocking so findings surface as a visible failing step without
+      # failing the job. A dedicated follow-up PR will run `prettier --write .`
+      # on the baseline, after which this `continue-on-error` should be removed
+      # to make formatting regressions blocking.
       - name: Check formatting
+        continue-on-error: true
         run: npm run format:check

@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
   security-events: write
+  # gitleaks-action needs pull_requests: read to list commits on PR events;
+  # without it the action returns 403 "Resource not accessible by integration".
+  pull-requests: read
 
 jobs:
   semgrep:

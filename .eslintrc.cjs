@@ -32,6 +32,12 @@ module.exports = {
     ],
     // Strapi generated code uses `any` heavily; warn but don't fail.
     '@typescript-eslint/no-explicit-any': 'warn',
+    // Empty catch blocks are a legitimate "swallow error on cleanup" pattern in
+    // this codebase; don't flag them. Empty blocks elsewhere remain a warning.
+    'no-empty': ['warn', { allowEmptyCatch: true }],
+    // Strapi scripts and some legacy modules use CommonJS require(); warn, don't
+    // fail, while the codebase gradually migrates to imports.
+    '@typescript-eslint/no-var-requires': 'warn',
     // Console is useful in backend scripts and seeding.
     'no-console': 'off',
     // Strapi factories return untyped things; explicit returns hurt more than help here.

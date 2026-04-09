@@ -7,6 +7,5 @@ coverage
 public
 types/generated
 package-lock.json
-*.md
 documentation
 postman

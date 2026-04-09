@@ -66,8 +66,11 @@ Every PR runs:
   findings as blockers unless there is a documented reason.
 - **CodeQL** — same as Semgrep.
 - **gitleaks** — blocks PRs that introduce secrets.
-- **npm audit** — blocks PRs if high/critical vulns are introduced in
-  production dependencies.
+- **npm audit** — not in CI yet. The current dependency tree has
+  pre-existing high/critical vulns inherited from Strapi 5.33.4 that
+  need a Strapi 5.42+ upgrade to fully resolve. Dependabot still tracks
+  dependency updates weekly. `npm audit` will be added back as a
+  blocking job after the Strapi upgrade lands.
 
 ## Phase 2: when lint stops being warn-only
 

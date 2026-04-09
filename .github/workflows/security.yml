@@ -19,12 +19,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      image: returntocorp/semgrep
+      # Pinned to a specific Semgrep release for supply-chain safety.
+      # Dependabot tracks container updates via the `semgrep/semgrep` image.
+      image: semgrep/semgrep:1.157.0
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # actions/checkout v4 — SHA-pinned; Dependabot will update.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      # Phase 1: `continue-on-error` lets findings surface as a visible red step
+      # without blocking the PR while the baseline is cleaned up. Unlike `|| true`,
+      # this preserves the real exit code so internal Semgrep errors (exit 2) and
+      # auth failures (exit 13) are still clearly visible in the step status.
+      # Flip to `false` once the baseline is clean — see CONTRIBUTING.md.
       - name: Run Semgrep
+        continue-on-error: true
         run: |
           semgrep ci \
             --config p/owasp-top-ten \
@@ -32,11 +41,12 @@ jobs:
             --config p/typescript \
             --config p/nodejs \
             --config p/secrets \
-            --sarif --output=semgrep.sarif || true
+            --sarif --output=semgrep.sarif
 
       - name: Upload Semgrep SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        # github/codeql-action/upload-sarif v3 — SHA-pinned.
+        uses: github/codeql-action/upload-sarif@3b1a19a80ab047f35cbb237b5bd9bdc1e14f166c
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -47,12 +57,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # actions/checkout v4 — SHA-pinned.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        # gitleaks/gitleaks-action v2 — SHA-pinned.
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

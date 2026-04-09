@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+.strapi
+.tmp
+coverage
+public
+types/generated
+package-lock.json
+documentation
+postman

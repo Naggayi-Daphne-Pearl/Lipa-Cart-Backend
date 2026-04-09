@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-build:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        # actions/checkout v4 — SHA-pinned for supply-chain safety; Dependabot will update.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node
+        # actions/setup-node v4 — SHA-pinned.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run check:types
+
+      - name: Build
+        run: npm run build
+        env:
+          # Strapi requires these at build time; fake values are fine for type/build check.
+          APP_KEYS: 'ci-build-key-1,ci-build-key-2'
+          API_TOKEN_SALT: 'ci-build-salt'
+          ADMIN_JWT_SECRET: 'ci-build-admin-jwt-secret'
+          TRANSFER_TOKEN_SALT: 'ci-build-transfer-salt'
+          JWT_SECRET: 'ci-build-jwt-secret'
+          ENCRYPTION_KEY: 'ci-build-encryption-key'
+
+  lint:
+    name: Lint & format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        # actions/checkout v4 — SHA-pinned for supply-chain safety; Dependabot will update.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node
+        # actions/setup-node v4 — SHA-pinned.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ESLint is tuned so the existing baseline produces 0 errors / warnings only
+      # (see .eslintrc.cjs). New lint errors introduced by a PR should block it.
+      - name: Run ESLint
+        run: npm run lint
+
+      # Phase 1: the existing codebase has ~29 files that do not conform to
+      # Prettier's style. Rather than churn them in this PR, format:check is
+      # non-blocking so findings surface as a visible failing step without
+      # failing the job. A dedicated follow-up PR will run `prettier --write .`
+      # on the baseline, after which this `continue-on-error` should be removed
+      # to make formatting regressions blocking.
+      - name: Check formatting
+        continue-on-error: true
+        run: npm run format:check

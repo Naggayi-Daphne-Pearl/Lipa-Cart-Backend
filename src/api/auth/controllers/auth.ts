@@ -14,8 +14,7 @@ export default {
    */
   async signup(ctx: any) {
     try {
-      const { phone, password, name, email, userType, rememberMe = true } =
-        ctx.request.body;
+      const { phone, password, name, email, userType, rememberMe = true } = ctx.request.body;
 
       // Validate required fields
       if (!phone || !password) {
@@ -35,15 +34,15 @@ export default {
       // Prevent signup for admin role only
       const normalizedUserType = (userType || 'customer').toLowerCase();
       if (normalizedUserType === 'admin') {
-        return ctx.forbidden('Admin accounts cannot be created via signup. Please contact the administrator.');
+        return ctx.forbidden(
+          'Admin accounts cannot be created via signup. Please contact the administrator.',
+        );
       }
 
       // Check if user already exists
-      const existingAuthUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({
-          where: { username: phone },
-        });
+      const existingAuthUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { username: phone },
+      });
 
       if (existingAuthUser) {
         return ctx.badRequest('User with this phone number already exists');
@@ -175,12 +174,10 @@ export default {
       }
 
       // Find auth user by phone (username)
-      const authUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({
-          where: { username: phone },
-          populate: { role: true },
-        });
+      const authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { username: phone },
+        populate: { role: true },
+      });
 
       if (!authUser) {
         return ctx.badRequest('Invalid phone or password');
@@ -201,12 +198,10 @@ export default {
       }
 
       // Fetch custom user profile
-      const customUser: any = await strapi
-        .entityService
-        .findMany('api::user.user', {
-          filters: { phone },
-          populate: { profile_photo: true, customer: true },
-        });
+      const customUser: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { phone },
+        populate: { profile_photo: true, customer: true },
+      });
 
       if (!customUser || customUser.length === 0) {
         return ctx.notFound('User profile not found');
@@ -248,7 +243,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
-              [user.id]
+              [user.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -256,17 +251,15 @@ export default {
                 where: { id: rows[0].shopper_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           if (!shopper) {
             const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
               populate: ['user'],
               limit: 200,
             });
-            shopper = allShoppers.find((s: any) =>
-              s.user?.id === user.id ||
-              s.user?.documentId === user.documentId
+            shopper = allShoppers.find(
+              (s: any) => s.user?.id === user.id || s.user?.documentId === user.documentId,
             );
           }
 
@@ -292,7 +285,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
-              [user.id]
+              [user.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -300,17 +293,15 @@ export default {
                 where: { id: rows[0].rider_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           if (!rider) {
             const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
               populate: ['user'],
               limit: 200,
             });
-            rider = allRiders.find((r: any) =>
-              r.user?.id === user.id ||
-              r.user?.documentId === user.documentId
+            rider = allRiders.find(
+              (r: any) => r.user?.id === user.id || r.user?.documentId === user.documentId,
             );
           }
 
@@ -326,13 +317,7 @@ export default {
         }
       }
 
-      const session = await issueSessionTokens(
-        strapi,
-        ctx,
-        authUser,
-        user,
-        rememberMe !== false,
-      );
+      const session = await issueSessionTokens(strapi, ctx, authUser, user, rememberMe !== false);
 
       ctx.body = {
         jwt: session.jwt,
@@ -367,8 +352,7 @@ export default {
    */
   async google(ctx: any) {
     try {
-      const { idToken, rememberMe = true, userType = 'customer' } =
-        ctx.request.body ?? {};
+      const { idToken, rememberMe = true, userType = 'customer' } = ctx.request.body ?? {};
 
       if (!idToken) {
         return ctx.badRequest('Google ID token is required');
@@ -379,30 +363,23 @@ export default {
       const normalizedUserType = (userType || 'customer').toLowerCase();
 
       if (normalizedUserType !== 'customer') {
-        return ctx.badRequest(
-          'Google sign-in is currently available for customer accounts only.',
-        );
+        return ctx.badRequest('Google sign-in is currently available for customer accounts only.');
       }
 
-      let userMatches: any = await strapi.entityService.findMany(
-        'api::user.user',
-        {
-          filters: { email: { $eqi: email } } as any,
-          populate: { profile_photo: true, customer: true },
-          limit: 1,
-        } as any,
-      );
+      let userMatches: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { email: { $eqi: email } } as any,
+        populate: { profile_photo: true, customer: true },
+        limit: 1,
+      } as any);
 
       let user: any = userMatches?.[0] ?? null;
       let authUserByEmail: any = null;
 
       if (!user) {
-        authUserByEmail = await strapi
-          .query('plugin::users-permissions.user')
-          .findOne({
-            where: { email },
-            populate: { role: true },
-          });
+        authUserByEmail = await strapi.query('plugin::users-permissions.user').findOne({
+          where: { email },
+          populate: { role: true },
+        });
 
         if (authUserByEmail?.username) {
           userMatches = await strapi.entityService.findMany('api::user.user', {
@@ -424,12 +401,10 @@ export default {
           : `google_${googleProfile.sub ?? Date.now().toString(36)}`;
 
         if (!authUser) {
-          authUser = await strapi
-            .query('plugin::users-permissions.user')
-            .findOne({
-              where: { username: pendingPhone },
-              populate: { role: true },
-            });
+          authUser = await strapi.query('plugin::users-permissions.user').findOne({
+            where: { username: pendingPhone },
+            populate: { role: true },
+          });
         }
 
         if (!authUser) {
@@ -457,24 +432,15 @@ export default {
         } as any);
 
         const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
-        const customer = await strapi.entityService.create(
-          'api::customer.customer',
-          {
-            data: {
-              user: user.id,
-              referral_code: referralCode,
-              total_orders: 0,
-            },
+        const customer = await strapi.entityService.create('api::customer.customer', {
+          data: {
+            user: user.id,
+            referral_code: referralCode,
+            total_orders: 0,
           },
-        );
+        });
 
-        const session = await issueSessionTokens(
-          strapi,
-          ctx,
-          authUser,
-          user,
-          rememberMe !== false,
-        );
+        const session = await issueSessionTokens(strapi, ctx, authUser, user, rememberMe !== false);
 
         ctx.body = {
           jwt: session.jwt,
@@ -518,31 +484,24 @@ export default {
           data: syncData as any,
         });
 
-        const refreshedUsers: any = await strapi.entityService.findMany(
-          'api::user.user',
-          {
-            filters: { phone: user.phone },
-            populate: { profile_photo: true, customer: true },
-            limit: 1,
-          } as any,
-        );
+        const refreshedUsers: any = await strapi.entityService.findMany('api::user.user', {
+          filters: { phone: user.phone },
+          populate: { profile_photo: true, customer: true },
+          limit: 1,
+        } as any);
         user = refreshedUsers?.[0] ?? user;
       }
 
-      let authUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({
-          where: { username: user.phone },
-          populate: { role: true },
-        });
+      let authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { username: user.phone },
+        populate: { role: true },
+      });
 
       if (!authUser && user.email) {
-        authUser = await strapi.query('plugin::users-permissions.user').findOne(
-          {
-            where: { email: user.email.toLowerCase() },
-            populate: { role: true },
-          },
-        );
+        authUser = await strapi.query('plugin::users-permissions.user').findOne({
+          where: { email: user.email.toLowerCase() },
+          populate: { role: true },
+        });
       }
 
       if (!authUser) {
@@ -573,16 +532,13 @@ export default {
         } else {
           try {
             const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
-            const newCustomer = await strapi.entityService.create(
-              'api::customer.customer',
-              {
-                data: {
-                  user: user.id,
-                  referral_code: referralCode,
-                  total_orders: 0,
-                },
+            const newCustomer = await strapi.entityService.create('api::customer.customer', {
+              data: {
+                user: user.id,
+                referral_code: referralCode,
+                total_orders: 0,
               },
-            );
+            });
             customerId = newCustomer.id;
           } catch (err) {
             console.error('Failed to create customer record:', err);
@@ -609,16 +565,12 @@ export default {
           } catch (linkErr: any) {}
 
           if (!shopper) {
-            const allShoppers: any = await strapi
-              .db.query('api::shopper.shopper')
-              .findMany({
-                populate: ['user'],
-                limit: 200,
-              });
+            const allShoppers: any = await strapi.db.query('api::shopper.shopper').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
             shopper = allShoppers.find(
-              (s: any) =>
-                s.user?.id === user.id ||
-                s.user?.documentId === user.documentId,
+              (s: any) => s.user?.id === user.id || s.user?.documentId === user.documentId,
             );
           }
 
@@ -653,15 +605,12 @@ export default {
           } catch (linkErr: any) {}
 
           if (!rider) {
-            const allRiders: any = await strapi
-              .db.query('api::rider.rider')
-              .findMany({
-                populate: ['user'],
-                limit: 200,
-              });
+            const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
+              populate: ['user'],
+              limit: 200,
+            });
             rider = allRiders.find(
-              (r: any) =>
-                r.user?.id === user.id || r.user?.documentId === user.documentId,
+              (r: any) => r.user?.id === user.id || r.user?.documentId === user.documentId,
             );
           }
 
@@ -677,13 +626,7 @@ export default {
         }
       }
 
-      const session = await issueSessionTokens(
-        strapi,
-        ctx,
-        authUser,
-        user,
-        rememberMe !== false,
-      );
+      const session = await issueSessionTokens(strapi, ctx, authUser, user, rememberMe !== false);
 
       ctx.body = {
         jwt: session.jwt,
@@ -713,9 +656,10 @@ export default {
           }),
         },
       };
-    } catch (error) {
-      console.error('Google sign-in error:', error);
-      ctx.throw(500, 'Failed to sign in with Google');
+    } catch (error: any) {
+      const message = error?.message || 'Unknown error';
+      console.error('Google sign-in error:', message, error);
+      ctx.throw(500, `Failed to sign in with Google: ${message}`);
     }
   },
 
@@ -733,19 +677,15 @@ export default {
       const token = authHeader.slice(7);
       let payload: any;
       try {
-        payload = await strapi.plugins['users-permissions'].services.jwt.verify(
-          token,
-        );
+        payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
       }
 
-      const authUser: any = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({
-          where: { id: payload.id },
-          populate: { role: true },
-        });
+      const authUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: payload.id },
+        populate: { role: true },
+      });
 
       if (!authUser) {
         return ctx.unauthorized('User not found');
@@ -760,14 +700,11 @@ export default {
         return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX');
       }
 
-      let customUsers: any = await strapi.entityService.findMany(
-        'api::user.user',
-        {
-          filters: { phone: authUser.username },
-          populate: { profile_photo: true, customer: true },
-          limit: 1,
-        } as any,
-      );
+      let customUsers: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { phone: authUser.username },
+        populate: { profile_photo: true, customer: true },
+        limit: 1,
+      } as any);
 
       let customUser = customUsers?.[0] ?? null;
       if (!customUser && authUser.email) {
@@ -787,13 +724,10 @@ export default {
         return ctx.forbidden('Only customer accounts can complete this flow');
       }
 
-      const existingPhoneUsers: any = await strapi.entityService.findMany(
-        'api::user.user',
-        {
-          filters: { phone },
-          limit: 1,
-        } as any,
-      );
+      const existingPhoneUsers: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { phone },
+        limit: 1,
+      } as any);
       const existingPhoneUser = existingPhoneUsers?.[0] ?? null;
       if (existingPhoneUser && existingPhoneUser.id !== customUser.id) {
         return ctx.badRequest('This phone number is already registered');
@@ -812,14 +746,11 @@ export default {
         } as any,
       });
 
-      const refreshedUsers: any = await strapi.entityService.findMany(
-        'api::user.user',
-        {
-          filters: { phone },
-          populate: { profile_photo: true, customer: true },
-          limit: 1,
-        } as any,
-      );
+      const refreshedUsers: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { phone },
+        populate: { profile_photo: true, customer: true },
+        limit: 1,
+      } as any);
       const refreshedUser = refreshedUsers?.[0] ?? customUser;
 
       ctx.body = {
@@ -854,13 +785,7 @@ export default {
       }
 
       const { authUser, customUser, rememberMe } = sessionUser;
-      const session = await issueSessionTokens(
-        strapi,
-        ctx,
-        authUser,
-        customUser,
-        rememberMe,
-      );
+      const session = await issueSessionTokens(strapi, ctx, authUser, customUser, rememberMe);
 
       const customerId = customUser?.customer?.id ?? null;
 
@@ -887,9 +812,9 @@ export default {
               populate: ['user'],
               limit: 200,
             });
-            shopper = allShoppers.find((s: any) =>
-              s.user?.id === customUser.id ||
-              s.user?.documentId === customUser.documentId,
+            shopper = allShoppers.find(
+              (s: any) =>
+                s.user?.id === customUser.id || s.user?.documentId === customUser.documentId,
             );
           }
 
@@ -928,9 +853,9 @@ export default {
               populate: ['user'],
               limit: 200,
             });
-            rider = allRiders.find((r: any) =>
-              r.user?.id === customUser.id ||
-              r.user?.documentId === customUser.documentId,
+            rider = allRiders.find(
+              (r: any) =>
+                r.user?.id === customUser.id || r.user?.documentId === customUser.documentId,
             );
           }
 
@@ -1007,7 +932,9 @@ export default {
       let user: any;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        user = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({ where: { id: payload.id } });
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
       }
@@ -1017,12 +944,10 @@ export default {
       }
 
       // Fetch custom user profile
-      const customUser: any = await strapi
-        .query('api::user.user')
-        .findOne({
-          where: { phone: user.username },
-          populate: { profile_photo: true, customer: true },
-        });
+      const customUser: any = await strapi.query('api::user.user').findOne({
+        where: { phone: user.username },
+        populate: { profile_photo: true, customer: true },
+      });
 
       if (!customUser) {
         return ctx.notFound('User profile not found');
@@ -1039,7 +964,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
-              [customUser.id]
+              [customUser.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -1047,8 +972,7 @@ export default {
                 where: { id: rows[0].shopper_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           // Fallback: query all shoppers with populate and match
           if (!shopper) {
@@ -1056,9 +980,9 @@ export default {
               populate: ['user'],
               limit: 200,
             });
-            shopper = allShoppers.find((s: any) =>
-              s.user?.id === customUser.id ||
-              s.user?.documentId === customUser.documentId
+            shopper = allShoppers.find(
+              (s: any) =>
+                s.user?.id === customUser.id || s.user?.documentId === customUser.documentId,
             );
           }
 
@@ -1086,7 +1010,7 @@ export default {
           try {
             const linkResult: any = await strapi.db.connection.raw(
               `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
-              [customUser.id]
+              [customUser.id],
             );
             const rows = linkResult?.rows || linkResult;
             if (rows && rows.length > 0) {
@@ -1094,17 +1018,16 @@ export default {
                 where: { id: rows[0].rider_id },
               });
             }
-          } catch (linkErr: any) {
-          }
+          } catch (linkErr: any) {}
 
           if (!rider) {
             const allRiders: any = await strapi.db.query('api::rider.rider').findMany({
               populate: ['user'],
               limit: 200,
             });
-            rider = allRiders.find((r: any) =>
-              r.user?.id === customUser.id ||
-              r.user?.documentId === customUser.documentId
+            rider = allRiders.find(
+              (r: any) =>
+                r.user?.id === customUser.id || r.user?.documentId === customUser.documentId,
             );
           }
 
@@ -1130,8 +1053,16 @@ export default {
         user_type: customUser.user_type,
         profile_photo: customUser.profile_photo?.url ?? null,
         customer_id: customUser.customer?.id ?? null,
-        ...(customUser.user_type === 'shopper' && { shopper_id: shopperId, kyc_status: kycStatus, kyc_rejection_reason: shopperRecord?.kyc_rejection_reason ?? null }),
-        ...(customUser.user_type === 'rider' && { rider_id: riderId, kyc_status: riderKycStatus, kyc_rejection_reason: riderRecord?.kyc_rejection_reason ?? null }),
+        ...(customUser.user_type === 'shopper' && {
+          shopper_id: shopperId,
+          kyc_status: kycStatus,
+          kyc_rejection_reason: shopperRecord?.kyc_rejection_reason ?? null,
+        }),
+        ...(customUser.user_type === 'rider' && {
+          rider_id: riderId,
+          kyc_status: riderKycStatus,
+          kyc_rejection_reason: riderRecord?.kyc_rejection_reason ?? null,
+        }),
       };
     } catch (error) {
       console.error('Get user profile error:', error);
@@ -1249,12 +1180,10 @@ export default {
       }
 
       // Update the user with the admin role
-      const updatedUser = await strapi
-        .query('plugin::users-permissions.user')
-        .update({
-          where: { id: userId },
-          data: { role: adminRole.id },
-        });
+      const updatedUser = await strapi.query('plugin::users-permissions.user').update({
+        where: { id: userId },
+        data: { role: adminRole.id },
+      });
 
       ctx.body = {
         message: `Admin role assigned to user ${userId}`,

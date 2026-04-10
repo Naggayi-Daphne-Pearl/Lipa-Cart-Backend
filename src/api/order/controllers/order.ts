@@ -4,10 +4,8 @@ import {
   notifyShoppersNewTask,
   notifyRidersNewDelivery,
 } from '../../../services/notification';
-import {
-  sendOrderConfirmationEmail,
-  sendDeliveryReceiptEmail,
-} from '../../../services/email';
+import { sendOrderConfirmationEmail, sendDeliveryReceiptEmail } from '../../../services/email';
+import { requireAuth } from '../../../services/auth-helper';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   async find(ctx: any) {
@@ -94,29 +92,11 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async claimOrder(ctx: any) {
     try {
-      // Manual JWT verification (Strapi middleware doesn't work on custom routes)
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params; // documentId of the order
-
-      // Find the custom user (shopper)
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'shopper') {
         return ctx.forbidden('Only shoppers can claim orders');
@@ -127,7 +107,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       try {
         const linkResult: any = await strapi.db.connection.raw(
           `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
-          [customUser.id]
+          [customUser.id],
         );
         const rows = linkResult?.rows || linkResult;
         if (rows && rows.length > 0) {
@@ -141,9 +121,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           populate: ['user'],
           limit: 200,
         });
-        shopperRecord = allShoppers.find((s: any) =>
-          s.user?.id === customUser.id ||
-          s.user?.documentId === customUser.documentId
+        shopperRecord = allShoppers.find(
+          (s: any) => s.user?.id === customUser.id || s.user?.documentId === customUser.documentId,
         );
       }
 
@@ -167,7 +146,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       }
 
       // Atomic claim: update status only if still 'payment_confirmed' to prevent race conditions
-      const claimResult = await strapi.db.connection('orders')
+      const claimResult = await strapi.db
+        .connection('orders')
         .where({ id: order.id, status: 'payment_confirmed' })
         .update({
           status: 'shopper_assigned',
@@ -195,7 +175,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       });
 
       // Notify customer: shopper assigned
-      notifyOrderStatusChange(strapi, order.id, 'shopper_assigned', order.order_number).catch(() => {});
+      notifyOrderStatusChange(strapi, order.id, 'shopper_assigned', order.order_number).catch(
+        () => {},
+      );
 
       ctx.body = { data: updated };
     } catch (error) {
@@ -210,27 +192,11 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async unclaimOrder(ctx: any) {
     try {
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params;
-
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'shopper') {
         return ctx.forbidden('Only shoppers can unclaim orders');
@@ -247,18 +213,14 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       }
 
       // Reset order status
-      await strapi.db.connection('orders')
-        .where({ id: order.id })
-        .update({
-          status: 'payment_confirmed',
-          shopper_assigned_at: null,
-          updated_at: new Date().toISOString(),
-        });
+      await strapi.db.connection('orders').where({ id: order.id }).update({
+        status: 'payment_confirmed',
+        shopper_assigned_at: null,
+        updated_at: new Date().toISOString(),
+      });
 
       // Remove shopper link
-      await strapi.db.connection('orders_shopper_lnk')
-        .where({ order_id: order.id })
-        .delete();
+      await strapi.db.connection('orders_shopper_lnk').where({ order_id: order.id }).delete();
 
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
@@ -281,35 +243,17 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async updateShopperStatus(ctx: any) {
     try {
-      // Manual JWT verification
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params;
       const { status } = ctx.request.body;
 
       const allowedTransitions: Record<string, string[]> = {
-        'shopper_assigned': ['shopping'],
-        'shopping': ['ready_for_pickup'],
+        shopper_assigned: ['shopping'],
+        shopping: ['ready_for_pickup'],
       };
-
-      // Find the custom user
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'shopper') {
         return ctx.forbidden('Only shoppers can update order status');
@@ -343,16 +287,18 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         // Recalculate total based on found items with actual prices
         try {
           const linkResult = await strapi.db.connection.raw(
-            `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`, [order.id]
+            `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`,
+            [order.id],
           );
           const linkRows = linkResult?.rows || linkResult || [];
           const itemIds = Array.isArray(linkRows) ? linkRows.map((r: any) => r.order_item_id) : [];
 
-          const orderItems: any[] = itemIds.length > 0
-            ? await strapi.db.query('api::order-item.order-item').findMany({
-                where: { id: { $in: itemIds } },
-              })
-            : [];
+          const orderItems: any[] =
+            itemIds.length > 0
+              ? await strapi.db.query('api::order-item.order-item').findMany({
+                  where: { id: { $in: itemIds } },
+                })
+              : [];
 
           let actualSubtotal = 0;
           for (const item of orderItems) {
@@ -371,7 +317,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           updateData.subtotal = actualSubtotal;
           updateData.service_fee = actualServiceFee;
           updateData.total = actualTotal;
-
         } catch (calcErr: any) {
           console.error('Failed to recalculate order total:', calcErr?.message);
           // Continue with status update even if recalculation fails
@@ -407,29 +352,11 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async confirmPayment(ctx: any) {
     try {
-      // Manual JWT verification
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params; // documentId of the order
-
-      // Verify the user is an admin
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'admin') {
         return ctx.forbidden('Only admins can confirm payments');
@@ -460,7 +387,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       });
 
       // Notify customer: payment confirmed
-      notifyOrderStatusChange(strapi, order.id, 'payment_confirmed', order.order_number).catch(() => {});
+      notifyOrderStatusChange(strapi, order.id, 'payment_confirmed', order.order_number).catch(
+        () => {},
+      );
       // Email: order confirmation
       sendOrderConfirmationEmail(strapi, order.id, order.order_number).catch(() => {});
       // Notify online shoppers: new task available
@@ -479,29 +408,11 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async claimDelivery(ctx: any) {
     try {
-      // Manual JWT verification
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params; // documentId of the order
-
-      // Find the custom user (rider)
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'rider') {
         return ctx.forbidden('Only riders can claim deliveries');
@@ -512,7 +423,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       try {
         const linkResult: any = await strapi.db.connection.raw(
           `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
-          [customUser.id]
+          [customUser.id],
         );
         const rows = linkResult?.rows || linkResult;
         if (rows && rows.length > 0) {
@@ -526,9 +437,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           populate: ['user'],
           limit: 200,
         });
-        riderRecord = allRiders.find((r: any) =>
-          r.user?.id === customUser.id ||
-          r.user?.documentId === customUser.documentId
+        riderRecord = allRiders.find(
+          (r: any) => r.user?.id === customUser.id || r.user?.documentId === customUser.documentId,
         );
       }
 
@@ -552,7 +462,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       }
 
       // Atomic claim: update status only if still 'ready_for_pickup' to prevent race conditions
-      const claimResult = await strapi.db.connection('orders')
+      const claimResult = await strapi.db
+        .connection('orders')
         .where({ id: order.id, status: 'ready_for_pickup' })
         .update({
           status: 'rider_assigned',
@@ -581,7 +492,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       });
 
       // Notify customer: rider assigned
-      notifyOrderStatusChange(strapi, order.id, 'rider_assigned', order.order_number).catch(() => {});
+      notifyOrderStatusChange(strapi, order.id, 'rider_assigned', order.order_number).catch(
+        () => {},
+      );
 
       ctx.body = { data: updated };
     } catch (error) {
@@ -596,35 +509,17 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async updateRiderStatus(ctx: any) {
     try {
-      // Manual JWT verification
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
 
       const { id } = ctx.params;
       const { status, delivery_proof_url } = ctx.request.body;
 
       const allowedTransitions: Record<string, string[]> = {
-        'rider_assigned': ['in_transit'],
-        'in_transit': ['delivered'],
+        rider_assigned: ['in_transit'],
+        in_transit: ['delivered'],
       };
-
-      // Find the custom user
-      const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone: strapiUser.username },
-      });
 
       if (!customUser || customUser.user_type !== 'rider') {
         return ctx.forbidden('Only riders can update delivery status');
@@ -677,18 +572,20 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       // When delivered, update shopper and rider stats
       if (status === 'delivered') {
-        const commission = (order.total || 0) * 0.10; // 10% commission
+        const commission = (order.total || 0) * 0.1; // 10% commission
 
         // Update shopper stats
         try {
           const shopperLink: any = await strapi.db.connection.raw(
-            `SELECT user_id FROM orders_shopper_lnk WHERE order_id = ?`, [order.id]
+            `SELECT user_id FROM orders_shopper_lnk WHERE order_id = ?`,
+            [order.id],
           );
           const shopperRows = shopperLink?.rows || shopperLink;
           if (shopperRows && shopperRows.length > 0) {
             const shopperUserId = shopperRows[0].user_id;
             const sLink: any = await strapi.db.connection.raw(
-              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`, [shopperUserId]
+              `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
+              [shopperUserId],
             );
             const sRows = sLink?.rows || sLink;
             if (sRows && sRows.length > 0) {
@@ -712,7 +609,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         // Update rider stats
         try {
           const riderLink: any = await strapi.db.connection.raw(
-            `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`, [customUser.id]
+            `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
+            [customUser.id],
           );
           const rRows = riderLink?.rows || riderLink;
           if (rRows && rRows.length > 0) {

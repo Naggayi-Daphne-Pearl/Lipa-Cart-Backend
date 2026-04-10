@@ -7,6 +7,14 @@ import {
   revokeSession,
 } from '../../../services/session-token';
 
+/** Mask an email for display: `jo***@example.com` */
+function _maskEmail(email: string | null | undefined): string {
+  if (!email || !email.includes('@')) return '***';
+  const [local, domain] = email.split('@');
+  const visible = local.slice(0, 2);
+  return `${visible}***@${domain}`;
+}
+
 export default {
   /**
    * Sign up with phone, password, and optional name/email
@@ -1095,13 +1103,29 @@ export default {
         return ctx.badRequest('No account found with this phone number');
       }
 
-      // Send OTP (via SMS if configured, else logs to console)
+      // Look up the user's email for fallback delivery
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone },
+        select: ['email'],
+      });
+
+      // Send OTP (SMS → email → console fallback)
       const otpService = strapi.service('api::otp.otp');
-      await otpService.generateOtp(phone);
+      const { deliveredVia } = await otpService.generateOtp(
+        phone,
+        customUser?.email || authUser?.email,
+      );
+
+      const messages: Record<string, string> = {
+        sms: 'Verification code sent to your phone via SMS',
+        email: `Verification code sent to ${_maskEmail(customUser?.email || authUser?.email)}`,
+        console: 'Verification code sent (demo mode — check server logs)',
+      };
 
       ctx.body = {
         success: true,
-        message: 'Verification code sent',
+        message: messages[deliveredVia] || 'Verification code sent',
+        deliveredVia,
       };
     } catch (error) {
       console.error('Forgot password error:', error);

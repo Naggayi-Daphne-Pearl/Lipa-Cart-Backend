@@ -17,13 +17,20 @@ export default {
         return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX (9 digits after prefix)');
       }
 
-      // Generate, store, and send OTP (via SMS if configured, else logs to console)
+      // Look up user email for fallback delivery
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone },
+        select: ['email'],
+      });
+
+      // Generate, store, and send OTP (SMS → email → console)
       const otpService = strapi.service('api::otp.otp');
-      await otpService.generateOtp(phone);
+      const { deliveredVia } = await otpService.generateOtp(phone, customUser?.email);
 
       ctx.body = {
         success: true,
         message: 'Verification code sent',
+        deliveredVia,
       };
     } catch (error) {
       ctx.throw(500, 'Failed to send OTP');
@@ -50,12 +57,10 @@ export default {
       }
 
       // OTP verified - find or create auth user
-      let authUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({
-          where: { username: phone },
-          populate: { role: true },
-        });
+      let authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { username: phone },
+        populate: { role: true },
+      });
 
       if (!authUser) {
         // Create new user with customer role
@@ -72,12 +77,10 @@ export default {
       }
 
       // Find or create custom user profile
-      let customUser = await strapi
-        .query('api::user.user')
-        .findOne({
-          where: { phone },
-          populate: { profile_photo: true, customer: true },
-        });
+      let customUser = await strapi.query('api::user.user').findOne({
+        where: { phone },
+        populate: { profile_photo: true, customer: true },
+      });
 
       if (!customUser) {
         customUser = await strapi.entityService.create('api::user.user', {
@@ -96,16 +99,13 @@ export default {
       } else {
         try {
           const referralCode = `LC${Date.now().toString(36).toUpperCase()}`;
-          const newCustomer: any = await strapi.entityService.create(
-            'api::customer.customer',
-            {
-              data: {
-                user: customUser.id,
-                referral_code: referralCode,
-                total_orders: 0,
-              },
+          const newCustomer: any = await strapi.entityService.create('api::customer.customer', {
+            data: {
+              user: customUser.id,
+              referral_code: referralCode,
+              total_orders: 0,
             },
-          );
+          });
           customerId = newCustomer.id;
         } catch (err) {
           console.error('Failed to create customer record during OTP verify:', err);

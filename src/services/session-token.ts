@@ -19,9 +19,7 @@ const parseRememberMe = (value: unknown, fallback = true): boolean => {
 const isSecureRequest = (ctx: any): boolean => {
   const forwardedProto = ctx.request.headers['x-forwarded-proto'];
   if (typeof forwardedProto === 'string') {
-    return forwardedProto
-      .split(',')
-      .some((value) => value.trim().toLowerCase() === 'https');
+    return forwardedProto.split(',').some((value) => value.trim().toLowerCase() === 'https');
   }
 
   return Boolean(ctx.request?.secure || ctx.secure || ctx.protocol === 'https');
@@ -39,10 +37,7 @@ const getRefreshLifetimeDays = (rememberMe: boolean): number => {
   return rememberMe ? REMEMBER_ME_REFRESH_DAYS : STANDARD_REFRESH_DAYS;
 };
 
-const getEntityId = async (
-  strapi: Core.Strapi,
-  entry: any,
-): Promise<number> => {
+const getEntityId = async (strapi: Core.Strapi, entry: any): Promise<number> => {
   if (typeof entry?.id === 'number') {
     return entry.id;
   }
@@ -65,12 +60,18 @@ const getEntityId = async (
   throw new Error('Unable to resolve numeric user id for session persistence');
 };
 
-const setRefreshCookie = (
-  ctx: any,
-  refreshToken: string,
-  expiresAt: Date,
-) => {
+const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
   const secure = isSecureRequest(ctx);
+
+  // When behind a TLS-terminating proxy (Railway, Render, etc.) the raw
+  // Node request is plain HTTP.  The `cookies` library checks the raw
+  // connection independently and throws "Cannot send secure cookie over
+  // unencrypted connection" even when we pass `secure: true`.  Setting
+  // `ctx.request.secure` tells Koa (and its cookies helper) that the
+  // *original* client connection was HTTPS.
+  if (secure && !ctx.request.secure) {
+    ctx.request.secure = true;
+  }
 
   ctx.cookies.set(REFRESH_COOKIE_NAME, refreshToken, {
     httpOnly: true,
@@ -85,6 +86,10 @@ const setRefreshCookie = (
 export const clearRefreshCookie = (ctx: any) => {
   const secure = isSecureRequest(ctx);
 
+  if (secure && !ctx.request.secure) {
+    ctx.request.secure = true;
+  }
+
   ctx.cookies.set(REFRESH_COOKIE_NAME, '', {
     httpOnly: true,
     secure,
@@ -95,10 +100,7 @@ export const clearRefreshCookie = (ctx: any) => {
   });
 };
 
-const findCustomUserByRefreshToken = async (
-  strapi: Core.Strapi,
-  refreshToken: string,
-) => {
+const findCustomUserByRefreshToken = async (strapi: Core.Strapi, refreshToken: string) => {
   const matches = (await strapi.entityService.findMany('api::user.user', {
     filters: {
       refresh_token_hash: hashRefreshToken(refreshToken),
@@ -180,8 +182,7 @@ export const issueSessionTokens = async (
 };
 
 export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
-  const refreshToken =
-    ctx.request.body?.refreshToken || ctx.cookies.get(REFRESH_COOKIE_NAME);
+  const refreshToken = ctx.request.body?.refreshToken || ctx.cookies.get(REFRESH_COOKIE_NAME);
 
   if (refreshToken) {
     const customUser = await findCustomUserByRefreshToken(strapi, refreshToken);
@@ -191,10 +192,7 @@ export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
         return {
           authUser,
           customUser,
-          rememberMe: parseRememberMe(
-            ctx.request.body?.rememberMe,
-            customUser.remember_me ?? true,
-          ),
+          rememberMe: parseRememberMe(ctx.request.body?.rememberMe, customUser.remember_me ?? true),
         };
       }
     }
@@ -225,10 +223,7 @@ export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
     return {
       authUser,
       customUser,
-      rememberMe: parseRememberMe(
-        ctx.request.body?.rememberMe,
-        customUser.remember_me ?? true,
-      ),
+      rememberMe: parseRememberMe(ctx.request.body?.rememberMe, customUser.remember_me ?? true),
     };
   } catch (error) {
     return null;

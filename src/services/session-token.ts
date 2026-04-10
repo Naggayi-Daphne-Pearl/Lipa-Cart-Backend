@@ -66,11 +66,10 @@ const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
   // When behind a TLS-terminating proxy (Railway, Render, etc.) the raw
   // Node request is plain HTTP.  The `cookies` library checks the raw
   // connection independently and throws "Cannot send secure cookie over
-  // unencrypted connection" even when we pass `secure: true`.  Setting
-  // `ctx.request.secure` tells Koa (and its cookies helper) that the
-  // *original* client connection was HTTPS.
-  if (secure && !ctx.request.secure) {
-    ctx.request.secure = true;
+  // unencrypted connection".  Setting `cookies.secure = true` overrides
+  // the library's own protocol check so it trusts our decision.
+  if (secure && ctx.cookies) {
+    ctx.cookies.secure = true;
   }
 
   ctx.cookies.set(REFRESH_COOKIE_NAME, refreshToken, {
@@ -86,8 +85,8 @@ const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
 export const clearRefreshCookie = (ctx: any) => {
   const secure = isSecureRequest(ctx);
 
-  if (secure && !ctx.request.secure) {
-    ctx.request.secure = true;
+  if (secure && ctx.cookies) {
+    ctx.cookies.secure = true;
   }
 
   ctx.cookies.set(REFRESH_COOKIE_NAME, '', {

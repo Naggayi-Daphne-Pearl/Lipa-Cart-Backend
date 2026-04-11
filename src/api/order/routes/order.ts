@@ -46,6 +46,25 @@ export default {
       handler: 'order.confirmPayment',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    // Admin management endpoints (auth: false — JWT verified manually in handler)
+    {
+      method: 'PATCH',
+      path: '/orders/:id/admin-cancel',
+      handler: 'order.adminCancelOrder',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'PATCH',
+      path: '/orders/:id/reassign-shopper',
+      handler: 'order.adminReassignShopper',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'PATCH',
+      path: '/orders/:id/reassign-rider',
+      handler: 'order.adminReassignRider',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     // Standard core CRUD routes (authenticated by default)
     { method: 'GET', path: '/orders', handler: 'order.find' },
     { method: 'GET', path: '/orders/:id', handler: 'order.findOne' },

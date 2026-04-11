@@ -21,6 +21,12 @@ export default {
     },
     {
       method: 'POST',
+      path: '/order-items/:id/suggest-substitute',
+      handler: 'order-item.suggestSubstitute',
+      config: { auth: false },
+    },
+    {
+      method: 'POST',
       path: '/order-items/bulk',
       handler: 'order-item.bulkCreate',
       config: { auth: false },

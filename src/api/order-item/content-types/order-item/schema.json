@@ -54,6 +54,12 @@
       "type": "boolean",
       "default": false
     },
+    "substitute_name": {
+      "type": "string"
+    },
+    "substitute_price": {
+      "type": "decimal"
+    },
     "substitute_for_item": {
       "type": "relation",
       "relation": "oneToOne",

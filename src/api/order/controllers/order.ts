@@ -61,6 +61,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         ctx.query.populate.order_items = {
           populate: {
             product: true,
+            substitution_photo: true,
           },
         };
         ctx.query.populate.delivery_address = true;
@@ -168,7 +169,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       // Fetch the updated order with full population
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
         },
@@ -224,7 +225,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
         },
@@ -326,7 +327,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: updateData,
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
         },
@@ -380,7 +381,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           payment_confirmed_at: new Date(),
         },
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
         },
@@ -484,7 +485,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       // Fetch the updated order with full population
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
           shopper: true,
@@ -555,7 +556,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: updateData,
         populate: {
-          order_items: { populate: { product: true } },
+          order_items: { populate: { product: true, substitution_photo: true } },
           delivery_address: true,
           customer: true,
           shopper: true,
@@ -695,6 +696,177 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     } catch (error) {
       console.error('Guest order creation error:', error);
       ctx.throw(500, 'Failed to create guest order');
+    }
+  },
+
+  /**
+   * Admin cancels an order from any status.
+   * PATCH /api/orders/:id/admin-cancel
+   */
+  async adminCancelOrder(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      // Verify admin role
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+        populate: ['role'],
+      });
+      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
+        return ctx.forbidden('Only admins can cancel orders');
+      }
+
+      const { id } = ctx.params;
+      const { cancellation_reason } = ctx.request.body;
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+      if (!order) return ctx.notFound('Order not found');
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          status: 'cancelled',
+          cancelled_at: new Date(),
+          cancellation_reason: cancellation_reason || 'Cancelled by admin',
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+          rider: true,
+        },
+      });
+
+      notifyOrderStatusChange(strapi, order.id, 'cancelled', order.order_number).catch(() => {});
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Admin cancel order error:', error);
+      ctx.throw(500, 'Failed to cancel order');
+    }
+  },
+
+  /**
+   * Admin reassigns shopper — removes current shopper, resets to payment_confirmed.
+   * PATCH /api/orders/:id/reassign-shopper
+   */
+  async adminReassignShopper(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+        populate: ['role'],
+      });
+      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
+        return ctx.forbidden('Only admins can reassign shoppers');
+      }
+
+      const { id } = ctx.params;
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+      if (!order) return ctx.notFound('Order not found');
+
+      if (!['shopper_assigned', 'shopping'].includes(order.status)) {
+        return ctx.badRequest('Order must be in shopper_assigned or shopping status to reassign');
+      }
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          status: 'payment_confirmed',
+          shopper: null,
+          shopper_assigned_at: null,
+          shopping_started_at: null,
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Admin reassign shopper error:', error);
+      ctx.throw(500, 'Failed to reassign shopper');
+    }
+  },
+
+  /**
+   * Admin reassigns rider — removes current rider, resets to ready_for_pickup.
+   * PATCH /api/orders/:id/reassign-rider
+   */
+  async adminReassignRider(ctx: any) {
+    try {
+      const authHeader = ctx.request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const token = authHeader.slice(7);
+      let jwtUser: any;
+      try {
+        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+      } catch {
+        return ctx.unauthorized('Invalid token');
+      }
+      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { id: jwtUser.id },
+        populate: ['role'],
+      });
+      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
+        return ctx.forbidden('Only admins can reassign riders');
+      }
+
+      const { id } = ctx.params;
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+      if (!order) return ctx.notFound('Order not found');
+
+      if (!['rider_assigned', 'in_transit'].includes(order.status)) {
+        return ctx.badRequest('Order must be in rider_assigned or in_transit status to reassign');
+      }
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          status: 'ready_for_pickup',
+          rider: null,
+          rider_assigned_at: null,
+          picked_up_at: null,
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+        },
+      });
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Admin reassign rider error:', error);
+      ctx.throw(500, 'Failed to reassign rider');
     }
   },
 }));

@@ -146,25 +146,32 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Order is already assigned to a shopper');
       }
 
-      // Atomic claim: update status only if still 'payment_confirmed' to prevent race conditions
-      const claimResult = await strapi.db
-        .connection('orders')
-        .where({ id: order.id, status: 'payment_confirmed' })
-        .update({
-          status: 'shopper_assigned',
-          shopper_assigned_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      let claimConflict = false;
+      await strapi.db.connection.transaction(async (trx: any) => {
+        // Atomic claim: update status only if still 'payment_confirmed' to prevent race conditions
+        const claimResult = await trx('orders')
+          .where({ id: order.id, status: 'payment_confirmed' })
+          .update({
+            status: 'shopper_assigned',
+            shopper_assigned_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
 
-      if (claimResult === 0) {
+        if (claimResult === 0) {
+          claimConflict = true;
+          return;
+        }
+
+        // Insert the shopper link (Strapi v5 uses a link table for relations)
+        await trx('orders_shopper_lnk').insert({
+          order_id: order.id,
+          user_id: customUser.id,
+        });
+      });
+
+      if (claimConflict) {
         return ctx.conflict('Order was already claimed by another shopper');
       }
-
-      // Insert the shopper link (Strapi v5 uses a link table for relations)
-      await strapi.db.connection('orders_shopper_lnk').insert({
-        order_id: order.id,
-        user_id: customUser.id,
-      });
 
       // Fetch the updated order with full population
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
@@ -213,15 +220,17 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Can only unclaim orders that have not started shopping yet');
       }
 
-      // Reset order status
-      await strapi.db.connection('orders').where({ id: order.id }).update({
-        status: 'payment_confirmed',
-        shopper_assigned_at: null,
-        updated_at: new Date().toISOString(),
-      });
+      await strapi.db.connection.transaction(async (trx: any) => {
+        // Reset order status
+        await trx('orders').where({ id: order.id }).update({
+          status: 'payment_confirmed',
+          shopper_assigned_at: null,
+          updated_at: new Date().toISOString(),
+        });
 
-      // Remove shopper link
-      await strapi.db.connection('orders_shopper_lnk').where({ order_id: order.id }).delete();
+        // Remove shopper link
+        await trx('orders_shopper_lnk').where({ order_id: order.id }).delete();
+      });
 
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
@@ -462,25 +471,32 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Order is already assigned to a rider');
       }
 
-      // Atomic claim: update status only if still 'ready_for_pickup' to prevent race conditions
-      const claimResult = await strapi.db
-        .connection('orders')
-        .where({ id: order.id, status: 'ready_for_pickup' })
-        .update({
-          status: 'rider_assigned',
-          rider_assigned_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+      let claimConflict = false;
+      await strapi.db.connection.transaction(async (trx: any) => {
+        // Atomic claim: update status only if still 'ready_for_pickup' to prevent race conditions
+        const claimResult = await trx('orders')
+          .where({ id: order.id, status: 'ready_for_pickup' })
+          .update({
+            status: 'rider_assigned',
+            rider_assigned_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
 
-      if (claimResult === 0) {
+        if (claimResult === 0) {
+          claimConflict = true;
+          return;
+        }
+
+        // Insert the rider link (Strapi v5 uses a link table for relations)
+        await trx('orders_rider_lnk').insert({
+          order_id: order.id,
+          user_id: customUser.id,
+        });
+      });
+
+      if (claimConflict) {
         return ctx.conflict('Delivery was already claimed by another rider');
       }
-
-      // Insert the rider link (Strapi v5 uses a link table for relations)
-      await strapi.db.connection('orders_rider_lnk').insert({
-        order_id: order.id,
-        user_id: customUser.id,
-      });
 
       // Fetch the updated order with full population
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
@@ -536,14 +552,16 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('You can only cancel a delivery before transit starts');
       }
 
-      await strapi.db.connection('orders').where({ id: order.id }).update({
-        status: 'ready_for_pickup',
-        rider_assigned_at: null,
-        picked_up_at: null,
-        updated_at: new Date().toISOString(),
-      });
+      await strapi.db.connection.transaction(async (trx: any) => {
+        await trx('orders').where({ id: order.id }).update({
+          status: 'ready_for_pickup',
+          rider_assigned_at: null,
+          picked_up_at: null,
+          updated_at: new Date().toISOString(),
+        });
 
-      await strapi.db.connection('orders_rider_lnk').where({ order_id: order.id }).delete();
+        await trx('orders_rider_lnk').where({ order_id: order.id }).delete();
+      });
 
       const updated = await strapi.entityService.findOne('api::order.order', order.id, {
         populate: {
@@ -756,6 +774,73 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     } catch (error) {
       console.error('Guest order creation error:', error);
       ctx.throw(500, 'Failed to create guest order');
+    }
+  },
+
+  /**
+   * Customer cancels own order from early stages only.
+   * PATCH /api/orders/:id/customer-cancel
+   */
+  async customerCancelOrder(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can cancel orders');
+      }
+
+      const { id } = ctx.params;
+      const { cancellation_reason } = ctx.request.body;
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['customer'],
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only cancel your own orders');
+      }
+
+      const cancellableStatuses = ['pending', 'payment_confirmed', 'shopper_assigned'];
+      if (!cancellableStatuses.includes(order.status)) {
+        return ctx.badRequest('Order can no longer be cancelled at this stage');
+      }
+
+      await strapi.db.connection.transaction(async (trx: any) => {
+        await trx('orders')
+          .where({ id: order.id })
+          .update({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            cancellation_reason: cancellation_reason || 'Cancelled by customer',
+            shopper_assigned_at: null,
+            updated_at: new Date().toISOString(),
+          });
+
+        await trx('orders_shopper_lnk').where({ order_id: order.id }).delete();
+        await trx('orders_rider_lnk').where({ order_id: order.id }).delete();
+      });
+
+      const updated = await strapi.entityService.findOne('api::order.order', order.id, {
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+          rider: true,
+        },
+      });
+
+      notifyOrderStatusChange(strapi, order.id, 'cancelled', order.order_number).catch(() => {});
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Customer cancel order error:', error);
+      ctx.throw(500, 'Failed to cancel order');
     }
   },
 

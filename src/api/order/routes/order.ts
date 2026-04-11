@@ -45,6 +45,13 @@ export default {
       handler: 'order.updateRiderStatus',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    // Customer order cancellation endpoint (auth: false — JWT verified manually in handler)
+    {
+      method: 'PATCH',
+      path: '/orders/:id/customer-cancel',
+      handler: 'order.customerCancelOrder',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     // Admin confirms payment (auth: false — JWT verified manually in handler)
     {
       method: 'PATCH',

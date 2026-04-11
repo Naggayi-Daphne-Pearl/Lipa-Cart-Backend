@@ -34,6 +34,12 @@ export default {
       config: { auth: false, policies: [], middlewares: [] },
     },
     {
+      method: 'DELETE',
+      path: '/orders/:id/claim-delivery',
+      handler: 'order.unclaimDelivery',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
       method: 'PATCH',
       path: '/orders/:id/rider-status',
       handler: 'order.updateRiderStatus',

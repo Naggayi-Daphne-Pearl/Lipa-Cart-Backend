@@ -508,6 +508,66 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    * Rider updates delivery status (in_transit, delivered)
    * PATCH /api/orders/:id/rider-status
    */
+  async unclaimDelivery(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+
+      const { id } = ctx.params;
+
+      if (!customUser || customUser.user_type !== 'rider') {
+        return ctx.forbidden('Only riders can cancel deliveries');
+      }
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['rider'],
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.rider?.id !== customUser.id) {
+        return ctx.forbidden('You are not assigned to this delivery');
+      }
+
+      // Riders can only cancel before pickup/transit starts.
+      if (order.status !== 'rider_assigned') {
+        return ctx.badRequest('You can only cancel a delivery before transit starts');
+      }
+
+      await strapi.db.connection('orders').where({ id: order.id }).update({
+        status: 'ready_for_pickup',
+        rider_assigned_at: null,
+        picked_up_at: null,
+        updated_at: new Date().toISOString(),
+      });
+
+      await strapi.db.connection('orders_rider_lnk').where({ order_id: order.id }).delete();
+
+      const updated = await strapi.entityService.findOne('api::order.order', order.id, {
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+        },
+      });
+
+      // Re-notify riders so the delivery can be re-claimed quickly.
+      notifyRidersNewDelivery(strapi, order.order_number).catch(() => {});
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Unclaim delivery error:', error);
+      ctx.throw(500, 'Failed to cancel delivery');
+    }
+  },
+
+  /**
+   * Rider updates delivery status (in_transit, delivered)
+   * PATCH /api/orders/:id/rider-status
+   */
   async updateRiderStatus(ctx: any) {
     try {
       const auth = await requireAuth(ctx, strapi);

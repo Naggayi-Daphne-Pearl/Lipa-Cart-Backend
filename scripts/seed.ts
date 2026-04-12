@@ -982,7 +982,14 @@ async function seed(strapi: Core.Strapi) {
   const existingCategories = await strapi
     .documents('api::category.category')
     .findMany({ limit: 100 });
-  const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({ limit: 100 });
+  const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({
+    limit: 100,
+    populate: {
+      ingredients: {
+        populate: { product: true },
+      },
+    } as any,
+  });
   const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
   const existingShoppingLists = await strapi
     .documents('api::shopping-list.shopping-list')
@@ -995,13 +1002,20 @@ async function seed(strapi: Core.Strapi) {
   const templatesHaveItems =
     templateLists.length >= shoppingLists.length &&
     templateLists.every((list: any) => Array.isArray(list.items) && list.items.length > 0);
+  const recipesHaveLinkedProducts =
+    existingRecipes.length >= recipes.length &&
+    existingRecipes.every((recipe: any) => {
+      const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+      return ingredients.some((ing: any) => Boolean(ing?.product));
+    });
 
   const isComplete =
     existingCategories.length >= categories.length &&
     existingRecipes.length >= recipes.length &&
     existingProducts.length >= products.length &&
     existingShoppingLists.length >= shoppingLists.length &&
-    templatesHaveItems;
+    templatesHaveItems &&
+    recipesHaveLinkedProducts;
 
   if (isComplete) {
     console.log(
@@ -1013,7 +1027,7 @@ async function seed(strapi: Core.Strapi) {
   // Incomplete or outdated — clear everything and re-seed
   if (existingCategories.length > 0) {
     console.log(
-      `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}) — clearing...`,
+      `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts}) — clearing...`,
     );
     const contentTypes = [
       'api::recipe.recipe',
@@ -1161,7 +1175,7 @@ async function seed(strapi: Core.Strapi) {
       const productDocumentId = resolveProductDocumentId(String(ing.name || ''));
       return {
         ...ing,
-        product: productDocumentId ? { documentId: productDocumentId } : undefined,
+        product: productDocumentId ?? undefined,
       };
     });
     const created = await strapi.documents('api::recipe.recipe').create({
@@ -1187,7 +1201,7 @@ async function seed(strapi: Core.Strapi) {
       const productDocumentId = resolveProductDocumentId(String(item.name || ''));
       return {
         ...item,
-        product: productDocumentId ? { documentId: productDocumentId } : undefined,
+        product: productDocumentId ?? undefined,
       };
     });
     await strapi.documents('api::shopping-list.shopping-list').create({
@@ -1216,7 +1230,7 @@ async function seed(strapi: Core.Strapi) {
         if (image) {
           await strapi.documents(item.uid as any).update({
             documentId: item.documentId,
-            data: { image: image.id } as any,
+            data: { image: image.url || item.imageUrl } as any,
             status: 'published',
           });
           success++;

@@ -1,3 +1,30 @@
 import { factories } from '@strapi/strapi';
 
-export default factories.createCoreController('api::recipe.recipe');
+const defaultRecipePopulate = {
+  ingredients: {
+    populate: {
+      product: true,
+    },
+  },
+  instructions: true,
+};
+
+export default factories.createCoreController('api::recipe.recipe', () => ({
+  async find(ctx) {
+    ctx.query = ctx.query || {};
+    if (!(ctx.query as any).populate) {
+      (ctx.query as any).populate = defaultRecipePopulate as any;
+    }
+
+    return super.find(ctx);
+  },
+
+  async findOne(ctx) {
+    ctx.query = ctx.query || {};
+    if (!(ctx.query as any).populate) {
+      (ctx.query as any).populate = defaultRecipePopulate as any;
+    }
+
+    return super.findOne(ctx);
+  },
+}));

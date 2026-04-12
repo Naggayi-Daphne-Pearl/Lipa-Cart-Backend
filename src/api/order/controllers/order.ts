@@ -6,6 +6,7 @@ import {
 } from '../../../services/notification';
 import { sendOrderConfirmationEmail, sendDeliveryReceiptEmail } from '../../../services/email';
 import { requireAuth, requireAdmin } from '../../../services/auth-helper';
+import { checkServiceArea } from '../../../services/service-area';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   /**
@@ -37,6 +38,31 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       }
 
       const body = (ctx.request.body?.data ?? {}) as any;
+
+      if (!body.delivery_address) {
+        return ctx.badRequest('delivery_address is required');
+      }
+
+      // Load the address so we can verify (a) the caller owns it and (b) it
+      // sits inside the service area. Both checks must run server-side: a
+      // malicious client could otherwise reference somebody else's address or
+      // an out-of-area pin that the frontend warning was bypassed for.
+      const addressRecord: any = await strapi.db.query('api::address.address').findOne({
+        where: { id: body.delivery_address },
+        populate: ['customer'],
+      });
+      if (!addressRecord) {
+        return ctx.badRequest('delivery_address not found');
+      }
+      if (addressRecord.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only deliver to your own saved addresses');
+      }
+
+      const areaCheck = checkServiceArea(addressRecord.gps_lat, addressRecord.gps_lng);
+      if (!areaCheck.ok) {
+        return ctx.badRequest(areaCheck.reason);
+      }
+
       ctx.request.body = {
         data: {
           order_number: body.order_number,
@@ -887,13 +913,30 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     const DELIVERY_FEE_FLAT = 3000;
 
     try {
-      const { phone, name, address_line, city, landmark, items } = ctx.request.body;
+      const { phone, name, address_line, city, landmark, items, gps_lat, gps_lng } =
+        ctx.request.body;
 
       if (!phone || !address_line) {
         return ctx.badRequest('phone and address_line are required');
       }
       if (!Array.isArray(items) || items.length === 0) {
         return ctx.badRequest('items must be a non-empty array');
+      }
+
+      // Service area enforcement: guest orders MUST include GPS coordinates so
+      // we can verify the drop point is inside the delivery zone. The frontend
+      // captures these from the location picker; rejecting here closes the
+      // door on a tampered/older client that omits them.
+      const guestLat =
+        typeof gps_lat === 'number' ? gps_lat : Number.parseFloat(String(gps_lat ?? ''));
+      const guestLng =
+        typeof gps_lng === 'number' ? gps_lng : Number.parseFloat(String(gps_lng ?? ''));
+      const guestAreaCheck = checkServiceArea(
+        Number.isFinite(guestLat) ? guestLat : null,
+        Number.isFinite(guestLng) ? guestLng : null,
+      );
+      if (!guestAreaCheck.ok) {
+        return ctx.badRequest(guestAreaCheck.reason);
       }
 
       // Resolve every product up-front so we can validate existence/availability
@@ -975,12 +1018,15 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         });
       }
 
-      // Create address record
+      // Create address record. Persist the GPS pin we just validated so future
+      // dispatch / routing systems can route to the same coordinates.
       const address: any = await strapi.entityService.create('api::address.address', {
         data: {
           address_line,
           city: city ?? null,
           landmark: landmark ?? null,
+          gps_lat: guestLat,
+          gps_lng: guestLng,
         },
       });
 

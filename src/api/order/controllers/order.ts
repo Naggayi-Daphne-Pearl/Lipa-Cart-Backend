@@ -9,10 +9,19 @@ import { requireAuth, requireAdmin } from '../../../services/auth-helper';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   /**
-   * Authenticated customers create an order via POST /api/orders. Client-supplied
-   * subtotal/service_fee/delivery_fee/total are IGNORED — they'll be set to 0
-   * here and recomputed by POST /api/order-items/bulk once the line items land.
-   * The customer relation is forced to match the authenticated user.
+   * Authenticated customers create an order via POST /api/orders.
+   *
+   * Client cannot influence:
+   * - status: always starts at 'pending'. The pending → payment_confirmed
+   *   transition happens at the end of POST /api/order-items/bulk, after the
+   *   line items have been validated and totals computed.
+   * - customer: forced to the authenticated user.
+   * - subtotal / service_fee / delivery_fee / total: zeroed; recomputed by
+   *   bulkCreate from catalog prices.
+   *
+   * Restricting status here also closes the door on a customer adding items
+   * after payment_confirmed via a second bulkCreate call: bulkCreate only
+   * accepts pending orders, and orders can never be re-opened to pending.
    */
   async create(ctx: any) {
     try {
@@ -27,8 +36,6 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.forbidden('Only customers can create orders');
       }
 
-      // Preserve the address + payment fields from the client but force
-      // ownership and wipe client totals — those are server-computed.
       const body = (ctx.request.body?.data ?? {}) as any;
       ctx.request.body = {
         data: {
@@ -36,7 +43,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           delivery_address: body.delivery_address,
           payment_method: body.payment_method,
           special_instructions: body.special_instructions,
-          status: body.status ?? 'pending',
+          status: 'pending',
           customer: customUser.id,
           subtotal: 0,
           service_fee: 0,

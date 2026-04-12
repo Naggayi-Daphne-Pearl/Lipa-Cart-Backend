@@ -27,12 +27,21 @@ async function releaseStaleShopperClaims(strapi: any) {
   for (const order of stale) {
     try {
       await strapi.db.connection.transaction(async (trx: any) => {
-        await trx('orders').where({ id: order.id, status: 'shopper_assigned' }).update({
-          status: 'payment_confirmed',
-          shopper_assigned_at: null,
-          updated_at: new Date().toISOString(),
-        });
-        await trx('orders_shopper_lnk').where({ order_id: order.id }).delete();
+        // Re-include the cutoff predicate inside the atomic UPDATE so that
+        // if the order was unclaimed and re-claimed in the gap between
+        // findMany and now (giving it a fresh shopper_assigned_at), we don't
+        // clobber the new claim. 0 rows updated = harmless race, just skip.
+        const updated = await trx('orders')
+          .where({ id: order.id, status: 'shopper_assigned' })
+          .where('shopper_assigned_at', '<', cutoff.toISOString())
+          .update({
+            status: 'payment_confirmed',
+            shopper_assigned_at: null,
+            updated_at: new Date().toISOString(),
+          });
+        if (updated > 0) {
+          await trx('orders_shopper_lnk').where({ order_id: order.id }).delete();
+        }
       });
     } catch (err: any) {
       strapi.log.warn(
@@ -58,13 +67,19 @@ async function releaseStaleRiderClaims(strapi: any) {
   for (const order of stale) {
     try {
       await strapi.db.connection.transaction(async (trx: any) => {
-        await trx('orders').where({ id: order.id, status: 'rider_assigned' }).update({
-          status: 'ready_for_pickup',
-          rider_assigned_at: null,
-          picked_up_at: null,
-          updated_at: new Date().toISOString(),
-        });
-        await trx('orders_rider_lnk').where({ order_id: order.id }).delete();
+        // Same race-tolerant guard as releaseStaleShopperClaims.
+        const updated = await trx('orders')
+          .where({ id: order.id, status: 'rider_assigned' })
+          .where('rider_assigned_at', '<', cutoff.toISOString())
+          .update({
+            status: 'ready_for_pickup',
+            rider_assigned_at: null,
+            picked_up_at: null,
+            updated_at: new Date().toISOString(),
+          });
+        if (updated > 0) {
+          await trx('orders_rider_lnk').where({ order_id: order.id }).delete();
+        }
       });
     } catch (err: any) {
       strapi.log.warn(`[cron] Failed to release rider claim on order ${order.id}: ${err?.message}`);

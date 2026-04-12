@@ -551,13 +551,17 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       if (orderRecord.customer?.id !== customUser.id) {
         return ctx.forbidden('You can only add items to your own orders');
       }
-      if (!['pending', 'payment_confirmed'].includes(orderRecord.status)) {
+      // Items can only be added to a brand-new pending order. Once we
+      // transition to payment_confirmed (at the end of this handler), the
+      // contents and total are locked in — a second bulkCreate call would be
+      // rejected here, preventing customers from changing items after the
+      // total has been agreed.
+      if (orderRecord.status !== 'pending') {
         return ctx.badRequest(`Cannot add items to an order in '${orderRecord.status}' state`);
       }
 
       const createdItems: any[] = [];
       const failedItems: any[] = [];
-      let subtotal = 0;
 
       for (const itemData of items) {
         try {
@@ -614,7 +618,6 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             },
           });
 
-          subtotal += estimatedPrice * quantity;
           createdItems.push(orderItem);
         } catch (error: any) {
           failedItems.push({ item: itemData, error: error.message });
@@ -624,28 +627,69 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       if (createdItems.length === 0) {
         return ctx.badRequest('No valid items to add');
       }
+
+      // Recompute totals against ALL items currently attached to this order
+      // (not just the ones in this batch). This is defensive: bulkCreate is
+      // already restricted to brand-new pending orders so there shouldn't be
+      // existing items, but querying authoritatively means we can't be
+      // tricked by stale rows or future flow changes.
+      const linkResult: any = await strapi.db.connection.raw(
+        `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`,
+        [orderRecord.id],
+      );
+      const linkRows = linkResult?.rows || linkResult || [];
+      const itemIds = Array.isArray(linkRows) ? linkRows.map((r: any) => r.order_item_id) : [];
+      const allOrderItems: any[] =
+        itemIds.length > 0
+          ? await strapi.db.query('api::order-item.order-item').findMany({
+              where: { id: { $in: itemIds } },
+            })
+          : [];
+
+      const subtotal = allOrderItems.reduce((sum, item) => {
+        const price = Number(item.estimated_price ?? 0);
+        const qty = Number(item.quantity ?? 1);
+        return sum + price * qty;
+      }, 0);
+
       if (subtotal < MIN_ORDER_SUBTOTAL) {
-        // Roll back so we don't leave a half-populated order.
+        // Roll back the items we just created so we don't leave a
+        // half-populated order behind.
         for (const item of createdItems) {
           await strapi.entityService.delete('api::order-item.order-item', item.id).catch(() => {});
         }
         return ctx.badRequest(`Minimum order value is UGX ${MIN_ORDER_SUBTOTAL.toLocaleString()}`);
       }
 
-      // Recompute and persist server-side totals on the order now that we
-      // know the authoritative item subtotal.
       const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
       const deliveryFee = DELIVERY_FEE_FLAT;
       const total = subtotal + serviceFee + deliveryFee;
 
-      await strapi.entityService.update('api::order.order', orderRecord.id, {
-        data: {
-          subtotal,
-          service_fee: serviceFee,
-          delivery_fee: deliveryFee,
-          total,
-        },
-      });
+      // Single update: persist the recomputed totals AND transition the
+      // order from pending to payment_confirmed in one step. After this the
+      // order is locked — bulkCreate's status guard will reject any further
+      // attempts to mutate items, and shoppers can claim the order.
+      try {
+        await strapi.entityService.update('api::order.order', orderRecord.id, {
+          data: {
+            subtotal,
+            service_fee: serviceFee,
+            delivery_fee: deliveryFee,
+            total,
+            status: 'payment_confirmed',
+            payment_confirmed_at: new Date(),
+          },
+        });
+      } catch (updateErr: any) {
+        // The items are already in the DB but the order metadata didn't
+        // land. Roll back the new items so the customer can retry from a
+        // clean slate rather than ending up with a bricked half-order.
+        for (const item of createdItems) {
+          await strapi.entityService.delete('api::order-item.order-item', item.id).catch(() => {});
+        }
+        console.error('ERROR: Failed to finalize order after bulkCreate:', updateErr);
+        return ctx.throw(500, 'Failed to finalize order');
+      }
 
       ctx.body = {
         data: createdItems,
@@ -656,6 +700,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           service_fee: serviceFee,
           delivery_fee: deliveryFee,
           total,
+          status: 'payment_confirmed',
         },
       };
     } catch (error: any) {

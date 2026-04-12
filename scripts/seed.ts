@@ -38,7 +38,16 @@ const IMAGE_BASENAME_ALIASES: Record<string, string> = {
   bread_bakery: 'bread_loaf',
   milk_yogurt: 'fresh_milk_1l',
   fish_seafood: 'tilapia',
-  rice_maize: 'rice_1kg',
+  rice_maize: 'grains_cereals',
+  rice_1kg: 'grains_cereals',
+  maize_flour_2kg: 'grains_cereals',
+  eggs: 'dairy_eggs',
+  eggs_tray_30: 'dairy_eggs',
+  watermelon: 'fruits_vegetables',
+  nakati: 'fruits_vegetables',
+  sukuma_wiki: 'fruits_vegetables',
+  coriander: 'fruits_vegetables',
+  ginger: 'fruits_vegetables',
   fresh_fruits: 'fruits_vegetables',
   fresh_vegetables: 'fruits_vegetables',
   herbs_spices: 'fruits_vegetables',
@@ -46,6 +55,9 @@ const IMAGE_BASENAME_ALIASES: Record<string, string> = {
   chicken_breast: 'chicken_tikka_masala',
   beef_stew_meat: 'beef_stir_fry',
   minced_beef: 'beef_stir_fry',
+  luwombo_steamed_chicken_stew: 'chicken_tikka_masala',
+  pilau: 'beef_stir_fry',
+  posho_and_beans: 'grains_cereals',
 };
 
 function resolveLocalImage(slug: string, imageMap: Map<string, string>): string | null {
@@ -55,13 +67,6 @@ function resolveLocalImage(slug: string, imageMap: Map<string, string>): string 
   const alias = IMAGE_BASENAME_ALIASES[base];
   if (alias && imageMap.has(alias)) return imageMap.get(alias)!;
 
-  // Last resort: any basename that starts with the slug's first token.
-  // Prevents "chicken" from accidentally matching "bread_*" but still lets
-  // "watermelon" pick up any future `watermelon_*.jpg` drop-in.
-  const prefix = base.split('_')[0];
-  for (const [key, filePath] of imageMap) {
-    if (key === prefix || key.startsWith(`${prefix}_`)) return filePath;
-  }
   return null;
 }
 
@@ -134,7 +139,6 @@ const categories = [
     color: '#4CAF50',
     sort_order: 1,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/pv1n76ZK/lipa-cart-6.jpg',
   },
   {
     name: 'Meat & Poultry',
@@ -143,7 +147,6 @@ const categories = [
     color: '#E53935',
     sort_order: 2,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/7dLSGRCv/lipa-cart-39.jpg',
   },
   {
     name: 'Dairy & Eggs',
@@ -152,7 +155,6 @@ const categories = [
     color: '#FFC107',
     sort_order: 3,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/7dLSGRCv/lipa-cart-39.jpg',
   },
   {
     name: 'Grains & Cereals',
@@ -161,7 +163,6 @@ const categories = [
     color: '#FF9800',
     sort_order: 4,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/jvYvdnm9/lipa-cart-38.jpg',
   },
   {
     name: 'Beverages',
@@ -170,7 +171,6 @@ const categories = [
     color: '#2196F3',
     sort_order: 5,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/jvYvdnm9/lipa-cart-38.jpg',
   },
   {
     name: 'Household & Cleaning',
@@ -179,7 +179,6 @@ const categories = [
     color: '#9C27B0',
     sort_order: 6,
     is_active: true,
-    imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg',
   },
 ];
 
@@ -218,7 +217,6 @@ const products = [
     common_units: ['bunch', 'kg', 'piece'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-fruits',
-    imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg',
   },
   {
     name: 'Mangoes',
@@ -229,7 +227,6 @@ const products = [
     common_units: ['piece', 'kg'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-fruits',
-    imageUrl: 'https://i.ibb.co/JjGQj85G/lipa-cart-12.jpg',
   },
   {
     name: 'Pineapple',
@@ -240,7 +237,6 @@ const products = [
     common_units: ['piece'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-fruits',
-    imageUrl: 'https://i.ibb.co/N2pYBBJS/lipa-cart-11.jpg',
   },
   {
     name: 'Watermelon',
@@ -250,7 +246,6 @@ const products = [
     common_units: ['piece', 'half'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-fruits',
-    imageUrl: 'https://i.ibb.co/xDFKZV0p/lipa-cart-25.jpg',
   },
   {
     name: 'Passion Fruit',
@@ -260,7 +255,6 @@ const products = [
     common_units: ['piece', 'kg'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-fruits',
-    imageUrl: 'https://i.ibb.co/VYL0gkZx/lipa-cart-35.jpg',
   },
   // Vegetables
   {
@@ -271,7 +265,6 @@ const products = [
     common_units: ['kg', 'piece', 'tin'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-vegetables',
-    imageUrl: 'https://i.ibb.co/LDHxJmkN/lipa-cart-34.jpg',
   },
   {
     name: 'Onions',
@@ -281,7 +274,6 @@ const products = [
     common_units: ['kg', 'piece'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-vegetables',
-    imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg',
   },
   {
     name: 'Cabbage',
@@ -291,7 +283,6 @@ const products = [
     common_units: ['piece', 'half'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-vegetables',
-    imageUrl: 'https://i.ibb.co/Mk3x6kHZ/lipa-cart-32.jpg',
   },
   {
     name: 'Nakati (African Nightshade)',
@@ -302,7 +293,6 @@ const products = [
     common_units: ['bunch'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-vegetables',
-    imageUrl: 'https://i.ibb.co/BKqDb5pK/lipa-cart-32.jpg',
   },
   {
     name: 'Sukuma Wiki (Collard Greens)',
@@ -312,7 +302,6 @@ const products = [
     common_units: ['bunch'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'fresh-vegetables',
-    imageUrl: 'https://i.ibb.co/Czs9DpF7/lipa-cart-22.jpg',
   },
   // Herbs
   {
@@ -324,7 +313,6 @@ const products = [
     common_units: ['bunch'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'herbs-spices',
-    imageUrl: 'https://i.ibb.co/0V5gYdJk/lipa-cart-34.jpg',
   },
   {
     name: 'Ginger',
@@ -334,7 +322,6 @@ const products = [
     common_units: ['piece', 'kg'],
     categorySlug: 'fruits-vegetables',
     subcategorySlug: 'herbs-spices',
-    imageUrl: 'https://i.ibb.co/hBWYJQhP/lipa-cart-31.jpg',
   },
   // Chicken
   {
@@ -345,7 +332,6 @@ const products = [
     common_units: ['piece'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'chicken',
-    imageUrl: 'https://i.ibb.co/hFNPP18g/lipa-cart-18.jpg',
   },
   {
     name: 'Chicken Breast',
@@ -355,7 +341,6 @@ const products = [
     common_units: ['kg', 'piece'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'chicken',
-    imageUrl: 'https://i.ibb.co/0YkZGZW3/lipa-cart-17.jpg',
   },
   // Beef
   {
@@ -366,7 +351,6 @@ const products = [
     common_units: ['kg'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'beef',
-    imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg',
   },
   {
     name: 'Minced Beef',
@@ -376,7 +360,6 @@ const products = [
     common_units: ['kg'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'beef',
-    imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg',
   },
   // Fish
   {
@@ -387,7 +370,6 @@ const products = [
     common_units: ['piece', 'kg'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'fish-seafood',
-    imageUrl: 'https://i.ibb.co/mF475pq7/lipa-cart-4.jpg',
   },
   {
     name: 'Nile Perch',
@@ -397,7 +379,6 @@ const products = [
     common_units: ['kg'],
     categorySlug: 'meat-poultry',
     subcategorySlug: 'fish-seafood',
-    imageUrl: 'https://i.ibb.co/1fkpD3mJ/lipa-cart-5.jpg',
   },
   // Dairy
   {
@@ -408,7 +389,6 @@ const products = [
     common_units: ['litre', 'packet'],
     categorySlug: 'dairy-eggs',
     subcategorySlug: 'milk-yogurt',
-    imageUrl: 'https://i.ibb.co/PZB6D3zc/lipa-cart-13.jpg',
   },
   {
     name: 'Yogurt (500ml)',
@@ -418,7 +398,6 @@ const products = [
     common_units: ['piece'],
     categorySlug: 'dairy-eggs',
     subcategorySlug: 'milk-yogurt',
-    imageUrl: 'https://i.ibb.co/1GBStBX3/lipa-cart-2.jpg',
   },
   // Eggs
   {
@@ -429,7 +408,6 @@ const products = [
     common_units: ['tray', 'piece'],
     categorySlug: 'dairy-eggs',
     subcategorySlug: 'eggs',
-    imageUrl: 'https://i.ibb.co/cbBMFLLN/lipa-cart-26.jpg',
   },
   // Grains
   {
@@ -440,7 +418,6 @@ const products = [
     common_units: ['kg'],
     categorySlug: 'grains-cereals',
     subcategorySlug: 'rice-maize',
-    imageUrl: 'https://i.ibb.co/P8gqkPHP/lipa-cart-27.jpg',
   },
   {
     name: 'Maize Flour (Posho) 2kg',
@@ -450,7 +427,6 @@ const products = [
     common_units: ['kg', 'packet'],
     categorySlug: 'grains-cereals',
     subcategorySlug: 'rice-maize',
-    imageUrl: 'https://i.ibb.co/7kCPjpZj/lipa-cart-28.jpg',
   },
   {
     name: 'Bread (Loaf)',
@@ -460,7 +436,6 @@ const products = [
     common_units: ['loaf'],
     categorySlug: 'grains-cereals',
     subcategorySlug: 'bread-bakery',
-    imageUrl: 'https://i.ibb.co/Cs2SFS3r/lipa-cart-3.jpg',
   },
   // Beverages
   {
@@ -471,7 +446,6 @@ const products = [
     common_units: ['bottle'],
     categorySlug: 'beverages',
     subcategorySlug: null,
-    imageUrl: 'https://i.ibb.co/kgFgkdTQ/lipa-cart-10.jpg',
   },
   {
     name: 'Orange Juice (1L)',
@@ -481,7 +455,6 @@ const products = [
     common_units: ['packet', 'bottle'],
     categorySlug: 'beverages',
     subcategorySlug: null,
-    imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg',
   },
   // Household
   {
@@ -492,7 +465,6 @@ const products = [
     common_units: ['piece'],
     categorySlug: 'household-cleaning',
     subcategorySlug: null,
-    imageUrl: 'https://i.ibb.co/NgVJjpTR/lipa-cart-31.jpg',
   },
   {
     name: 'Cooking Oil (1L)',
@@ -502,7 +474,6 @@ const products = [
     common_units: ['litre', 'bottle'],
     categorySlug: 'household-cleaning',
     subcategorySlug: null,
-    imageUrl: 'https://i.ibb.co/yn18Z6jj/lipa-cart-30.jpg',
   },
 ];
 
@@ -521,7 +492,6 @@ const recipes = [
     rating: 4.8,
     review_count: 42,
     tags: ['Traditional', 'Ugandan', 'Special Occasion'],
-    imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
     ingredients: [
       { name: 'Whole Chicken', quantity: 1, unit: 'piece', notes: 'cut into pieces' },
       { name: 'Groundnut Paste', quantity: 200, unit: 'g', notes: null },
@@ -573,7 +543,6 @@ const recipes = [
     rating: 4.9,
     review_count: 128,
     tags: ['Quick', 'Street Food', 'Ugandan', 'Budget'],
-    imageUrl: 'https://i.ibb.co/n8BRfYH5/lipa-cart-8.jpg',
     ingredients: [
       { name: 'Chapati', quantity: 1, unit: 'piece', notes: null },
       { name: 'Eggs', quantity: 2, unit: 'piece', notes: null },
@@ -619,7 +588,6 @@ const recipes = [
     rating: 4.6,
     review_count: 67,
     tags: ['Traditional', 'Ugandan', 'Staple', 'Vegetarian'],
-    imageUrl: 'https://i.ibb.co/qF12DMYq/lipa-cart-29.jpg',
     ingredients: [
       { name: 'Green Bananas (Matooke)', quantity: 1, unit: 'bunch', notes: 'peeled' },
       { name: 'Tomatoes', quantity: 3, unit: 'piece', notes: 'chopped' },
@@ -666,7 +634,6 @@ const recipes = [
     rating: 4.6,
     review_count: 198,
     tags: ['East African', 'Bread', 'Traditional', 'Vegetarian'],
-    imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
     ingredients: [
       { name: 'All-Purpose Flour', quantity: 3, unit: 'cups', notes: null },
       { name: 'Cooking Oil', quantity: 0.5, unit: 'cup', notes: null },
@@ -709,7 +676,6 @@ const recipes = [
     rating: 4.8,
     review_count: 189,
     tags: ['East African', 'Rice', 'Swahili', 'One-Pot'],
-    imageUrl: 'https://i.ibb.co/JVsVsWHz/lipa-cart-15.jpg',
     ingredients: [
       { name: 'Basmati Rice', quantity: 3, unit: 'cups', notes: null },
       { name: 'Beef Stew Meat', quantity: 500, unit: 'g', notes: null },
@@ -770,7 +736,6 @@ const recipes = [
     rating: 4.7,
     review_count: 312,
     tags: ['Ugandan', 'Vegetarian', 'Traditional', 'Quick', 'Budget'],
-    imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
     ingredients: [
       { name: 'Maize Flour', quantity: 2, unit: 'cups', notes: null },
       { name: 'Beans', quantity: 2, unit: 'cups', notes: 'pre-soaked or canned' },
@@ -822,7 +787,6 @@ const recipes = [
     rating: 4.8,
     review_count: 276,
     tags: ['Indian', 'Curry', 'Chicken', 'Creamy'],
-    imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
     ingredients: [
       { name: 'Chicken Breast', quantity: 600, unit: 'g', notes: 'cubed' },
       { name: 'Yogurt', quantity: 1, unit: 'cup', notes: 'for marinade' },
@@ -877,7 +841,6 @@ const recipes = [
     rating: 4.5,
     review_count: 156,
     tags: ['Breakfast', 'Quick', 'Healthy', 'Vegetarian'],
-    imageUrl: 'https://i.ibb.co/n8r3DtbQ/lipa-cart-28.jpg',
     ingredients: [
       { name: 'Avocado', quantity: 2, unit: 'piece', notes: 'ripe' },
       { name: 'Bread', quantity: 4, unit: 'slices', notes: 'toasted' },
@@ -922,7 +885,6 @@ const recipes = [
     rating: 4.7,
     review_count: 142,
     tags: ['Breakfast', 'Healthy', 'Quick', 'Vegetarian'],
-    imageUrl: 'https://i.ibb.co/qMwPWDjw/lipa-cart-27.jpg',
     ingredients: [
       { name: 'Bananas', quantity: 2, unit: 'piece', notes: 'frozen' },
       { name: 'Passion Fruit', quantity: 3, unit: 'piece', notes: 'pulp scooped out' },
@@ -963,7 +925,6 @@ const recipes = [
     rating: 4.6,
     review_count: 167,
     tags: ['Asian', 'Quick', 'Meat', 'Healthy'],
-    imageUrl: 'https://i.ibb.co/xSKK7XWn/lipa-cart-26.jpg',
     ingredients: [
       { name: 'Beef Stew Meat', quantity: 500, unit: 'g', notes: 'sliced thinly' },
       { name: 'Cabbage', quantity: 0.25, unit: 'piece', notes: 'shredded' },
@@ -1073,6 +1034,7 @@ async function backfillImageUrls(
   existingCategories: any[],
   existingProducts: any[],
   existingRecipes: any[],
+  replaceExisting = false,
 ) {
   const imageMap = buildLocalImageMap();
   if (imageMap.size === 0) {
@@ -1084,7 +1046,7 @@ async function backfillImageUrls(
   let skipped = 0;
 
   for (const cat of existingCategories) {
-    if (cat.image) {
+    if (cat.image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1100,7 +1062,7 @@ async function backfillImageUrls(
   }
 
   for (const prod of existingProducts) {
-    if (prod.image) {
+    if (prod.image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1116,7 +1078,7 @@ async function backfillImageUrls(
   }
 
   for (const recipe of existingRecipes) {
-    if (recipe.image) {
+    if (recipe.image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1137,6 +1099,7 @@ async function backfillImageUrls(
 // ── Main seed function ──
 async function seed(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
+  const shouldReplaceImages = process.env.SEED_REPLACE_IMAGES === 'true';
 
   // Check if data already exists and is complete
   const existingCategories = await strapi
@@ -1189,19 +1152,26 @@ async function seed(strapi: Core.Strapi) {
       Boolean(sampleCategory?.image) &&
       Boolean(sampleRecipe?.image);
 
-    if (imagesArePopulated) {
+    if (imagesArePopulated && !shouldReplaceImages) {
       console.log(
         `⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes, ${existingShoppingLists.length} lists), skipping.`,
       );
       return;
     }
 
-    console.log('🖼️  Existing data has null image fields — backfilling URLs...');
+    if (shouldReplaceImages) {
+      console.log(
+        '🖼️  SEED_REPLACE_IMAGES=true — refreshing all category/product/recipe images...',
+      );
+    } else {
+      console.log('🖼️  Existing data has null image fields — backfilling URLs...');
+    }
     await backfillImageUrls(
       strapi,
       existingCategories as any[],
       existingProducts as any[],
       existingRecipes as any[],
+      shouldReplaceImages,
     );
     return;
   }
@@ -1237,21 +1207,19 @@ async function seed(strapi: Core.Strapi) {
   console.log('🌱 Phase 1: Creating entities...');
 
   // Track documentIds for background image upload
-  const imageQueue: { uid: string; documentId: string; imageUrl: string; name: string }[] = [];
+  const imageQueue: { uid: string; documentId: string; name: string }[] = [];
 
   // Seed categories
   const categoryMap: Record<string, string> = {};
   for (const cat of categories) {
-    const { imageUrl, ...data } = cat;
     const created = await strapi.documents('api::category.category').create({
-      data,
+      data: cat,
       status: 'published',
     });
     categoryMap[cat.slug] = created.documentId;
     imageQueue.push({
       uid: 'api::category.category',
       documentId: created.documentId,
-      imageUrl,
       name: cat.slug,
     });
     console.log(`  ✅ Category: ${cat.name}`);
@@ -1322,7 +1290,7 @@ async function seed(strapi: Core.Strapi) {
   };
 
   for (const prod of products) {
-    const { categorySlug, subcategorySlug, imageUrl, ...data } = prod;
+    const { categorySlug, subcategorySlug, ...data } = prod;
     const created = await strapi.documents('api::product.product').create({
       data: {
         ...data,
@@ -1343,7 +1311,6 @@ async function seed(strapi: Core.Strapi) {
     imageQueue.push({
       uid: 'api::product.product',
       documentId: created.documentId,
-      imageUrl,
       name: prod.slug,
     });
     console.log(`  ✅ Product: ${prod.name}`);
@@ -1351,9 +1318,8 @@ async function seed(strapi: Core.Strapi) {
 
   // Seed recipes with linked products
   for (const recipe of recipes) {
-    const { imageUrl, ...recipeData } = recipe;
     // Link ingredients to actual products by name
-    const linkedIngredients = (recipeData.ingredients || []).map((ing: any) => {
+    const linkedIngredients = (recipe.ingredients || []).map((ing: any) => {
       const productDocumentId = resolveProductDocumentId(String(ing.name || ''));
       return {
         ...ing,
@@ -1362,7 +1328,7 @@ async function seed(strapi: Core.Strapi) {
     });
     const created = await strapi.documents('api::recipe.recipe').create({
       data: {
-        ...recipeData,
+        ...recipe,
         ingredients: linkedIngredients,
       } as any,
       status: 'published',
@@ -1370,7 +1336,6 @@ async function seed(strapi: Core.Strapi) {
     imageQueue.push({
       uid: 'api::recipe.recipe',
       documentId: created.documentId,
-      imageUrl,
       name: recipe.slug,
     });
     console.log(`  ✅ Recipe: ${recipe.name}`);

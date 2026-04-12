@@ -11,7 +11,7 @@ export interface ListItem extends Struct.ComponentSchema {
     is_checked: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     notes: Schema.Attribute.String;
-    product: Schema.Attribute.Relation<'oneToOne', 'api::product.product'>;
+    product: Schema.Attribute.Relation<'manyToOne', 'api::product.product'>;
     quantity: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<1>;
     unit: Schema.Attribute.String;
     unit_price: Schema.Attribute.Decimal;
@@ -28,7 +28,7 @@ export interface RecipeIngredient extends Struct.ComponentSchema {
     is_optional: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     notes: Schema.Attribute.String;
-    product: Schema.Attribute.Relation<'oneToOne', 'api::product.product'>;
+    product: Schema.Attribute.Relation<'manyToOne', 'api::product.product'>;
     quantity: Schema.Attribute.Decimal;
     unit: Schema.Attribute.String;
   };

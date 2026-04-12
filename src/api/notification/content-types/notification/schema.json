@@ -22,7 +22,15 @@
     },
     "type": {
       "type": "enumeration",
-      "enum": ["order_status", "new_task", "new_delivery", "promo", "system"],
+      "enum": [
+        "order_status",
+        "new_task",
+        "new_delivery",
+        "substitute_suggestion",
+        "substitute_response",
+        "promo",
+        "system"
+      ],
       "default": "order_status"
     },
     "is_read": {

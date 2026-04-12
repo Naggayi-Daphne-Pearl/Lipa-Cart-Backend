@@ -1,6 +1,8 @@
 import * as admin from 'firebase-admin';
 
 let firebaseApp: admin.app.App | null = null;
+const FANOUT_BATCH_SIZE = 25;
+const DEDUPE_WINDOW_MS = 45 * 1000;
 
 /**
  * Notification message templates keyed by order status.
@@ -118,6 +120,11 @@ const RETRYABLE_FCM_CODES = new Set([
   'messaging/timeout',
 ]);
 
+const STALE_TOKEN_FCM_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+
 const PUSH_MAX_ATTEMPTS = 3;
 const PUSH_BASE_DELAY_MS = 250;
 
@@ -125,13 +132,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function sendPush(
+interface PushResult {
+  ok: boolean;
+  code?: string;
+}
+
+async function sendPushDetailed(
   fcmToken: string,
   title: string,
   body: string,
   data?: Record<string, string>,
-): Promise<boolean> {
-  if (!firebaseApp || !fcmToken) return false;
+): Promise<PushResult> {
+  if (!firebaseApp || !fcmToken) return { ok: false };
 
   const route = data?.route || '/';
   const payload = {
@@ -167,7 +179,7 @@ export async function sendPush(
       if (attempt > 1) {
         console.info(`[notifications] Push to ${tokenPreview}... succeeded on attempt ${attempt}`);
       }
-      return true;
+      return { ok: true };
     } catch (err: any) {
       const code = err?.errorInfo?.code || err?.code;
       const retryable = RETRYABLE_FCM_CODES.has(code);
@@ -176,9 +188,8 @@ export async function sendPush(
           `[notifications] Push to ${tokenPreview}... failed after ${attempt} attempt(s) (code=${code}):`,
           err?.message,
         );
-        return false;
+        return { ok: false, code };
       }
-      // Exponential backoff: 250ms, 500ms
       const delay = PUSH_BASE_DELAY_MS * 2 ** (attempt - 1);
       console.warn(
         `[notifications] Push to ${tokenPreview}... transient failure (code=${code}), retrying in ${delay}ms`,
@@ -186,7 +197,114 @@ export async function sendPush(
       await sleep(delay);
     }
   }
-  return false;
+
+  return { ok: false };
+}
+
+export async function sendPush(
+  fcmToken: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Promise<boolean> {
+  const result = await sendPushDetailed(fcmToken, title, body, data);
+  return result.ok;
+}
+
+function normalizeTokenList(tokens: unknown): string[] {
+  if (!Array.isArray(tokens)) return [];
+  return tokens
+    .filter((token): token is string => typeof token === 'string' && token.trim().length > 0)
+    .map((token) => token.trim());
+}
+
+function getUserPushTokens(user: any): string[] {
+  const tokens = normalizeTokenList(user?.fcm_tokens);
+  const legacy = typeof user?.fcm_token === 'string' ? user.fcm_token.trim() : '';
+  if (legacy && !tokens.includes(legacy)) {
+    tokens.unshift(legacy);
+  }
+  return Array.from(new Set(tokens));
+}
+
+async function removeInvalidUserToken(strapi: any, user: any, staleToken: string): Promise<void> {
+  try {
+    const tokens = getUserPushTokens(user).filter((token) => token !== staleToken);
+    await strapi.db.query('api::user.user').update({
+      where: { id: user.id },
+      data: {
+        fcm_tokens: tokens,
+        fcm_token: tokens.length > 0 ? tokens[0] : null,
+      },
+    });
+  } catch (err: any) {
+    strapi?.log?.warn?.(
+      `[notifications] Failed to remove stale token for user ${user?.id}: ${err?.message}`,
+    );
+  }
+}
+
+async function sendPushToUser(
+  strapi: any,
+  user: any,
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Promise<boolean> {
+  if (!isFirebaseReady()) return false;
+
+  const tokens = getUserPushTokens(user);
+  if (tokens.length === 0) return false;
+
+  let sentAny = false;
+  for (const token of tokens) {
+    const result = await sendPushDetailed(token, title, body, data);
+    if (result.ok) {
+      sentAny = true;
+      continue;
+    }
+
+    if (result.code && STALE_TOKEN_FCM_CODES.has(result.code)) {
+      await removeInvalidUserToken(strapi, user, token);
+    }
+  }
+
+  return sentAny;
+}
+
+async function saveNotificationIfNotDuplicate(
+  strapi: any,
+  userId: number,
+  title: string,
+  body: string,
+  type: string,
+  orderNumber?: string,
+  data?: Record<string, string>,
+): Promise<boolean> {
+  const createdAfter = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
+
+  const recent = await strapi.db.query('api::notification.notification').findOne({
+    where: {
+      user: userId,
+      type,
+      title,
+      body,
+      order_number: orderNumber ?? null,
+      createdAt: { $gte: createdAfter },
+    },
+  });
+
+  if (recent) return false;
+
+  await saveNotification(strapi, userId, title, body, type, orderNumber, data);
+  return true;
+}
+
+async function runInBatches<T>(items: T[], batchSize: number, work: (item: T) => Promise<void>) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    const chunk = items.slice(i, i + batchSize);
+    await Promise.all(chunk.map((item) => work(item)));
+  }
 }
 
 /**
@@ -256,21 +374,19 @@ export async function notifyOrderStatusChange(
       route: '/customer/orders',
     };
 
-    // Save to inbox (always, even if push fails)
-    await saveNotification(strapi, customerUser.id, title, body, 'order_status', orderNumber, data);
+    // Save to inbox (always, even if push fails), but avoid rapid duplicates.
+    await saveNotificationIfNotDuplicate(
+      strapi,
+      customerUser.id,
+      title,
+      body,
+      'order_status',
+      orderNumber,
+      data,
+    );
 
-    // Send push (only if Firebase is ready and token exists)
-    if (isFirebaseReady() && customerUser.fcm_token) {
-      console.log(
-        `[notifications] Sending push to user ${customerUser.id}, token: ${customerUser.fcm_token.slice(0, 20)}...`,
-      );
-      const sent = await sendPush(customerUser.fcm_token, title, body, data);
-      console.log(`[notifications] Push ${sent ? 'sent successfully' : 'FAILED'}`);
-    } else {
-      console.warn(
-        `[notifications] Skipping push — firebase=${isFirebaseReady()}, token=${!!customerUser.fcm_token}`,
-      );
-    }
+    // Send push to all registered devices for this user.
+    await sendPushToUser(strapi, customerUser, title, body, data);
   } catch (err: any) {
     strapi?.log?.error(
       `[notifications] notifyOrderStatusChange(order=${orderId}, status=${newStatus}) failed: ${err?.message}`,
@@ -296,23 +412,29 @@ export async function notifyShoppersNewTask(strapi: any, orderNumber: string): P
       route: '/shopper/available-tasks',
     };
 
-    for (const shopper of shoppers) {
+    await runInBatches(shoppers, FANOUT_BATCH_SIZE, async (shopper) => {
       const userId = shopper.user?.id;
-      if (!userId) continue;
+      if (!userId) return;
 
       const user: any = await strapi.db.query('api::user.user').findOne({
         where: { id: userId },
       });
-      if (!user) continue;
+      if (!user) return;
 
-      // Save to inbox
-      await saveNotification(strapi, user.id, title, body, 'new_task', orderNumber, data);
+      // Save to inbox (deduped)
+      await saveNotificationIfNotDuplicate(
+        strapi,
+        user.id,
+        title,
+        body,
+        'new_task',
+        orderNumber,
+        data,
+      );
 
-      // Send push
-      if (isFirebaseReady() && user.fcm_token) {
-        await sendPush(user.fcm_token, title, body, data);
-      }
-    }
+      // Send push to all user devices
+      await sendPushToUser(strapi, user, title, body, data);
+    });
   } catch (err: any) {
     strapi?.log?.error(
       `[notifications] notifyShoppersNewTask(order=${orderNumber}) failed: ${err?.message}`,
@@ -338,26 +460,88 @@ export async function notifyRidersNewDelivery(strapi: any, orderNumber: string):
       route: '/rider/available-deliveries',
     };
 
-    for (const rider of riders) {
+    await runInBatches(riders, FANOUT_BATCH_SIZE, async (rider) => {
       const userId = rider.user?.id;
-      if (!userId) continue;
+      if (!userId) return;
 
       const user: any = await strapi.db.query('api::user.user').findOne({
         where: { id: userId },
       });
-      if (!user) continue;
+      if (!user) return;
 
-      // Save to inbox
-      await saveNotification(strapi, user.id, title, body, 'new_delivery', orderNumber, data);
+      // Save to inbox (deduped)
+      await saveNotificationIfNotDuplicate(
+        strapi,
+        user.id,
+        title,
+        body,
+        'new_delivery',
+        orderNumber,
+        data,
+      );
 
-      // Send push
-      if (isFirebaseReady() && user.fcm_token) {
-        await sendPush(user.fcm_token, title, body, data);
-      }
-    }
+      // Send push to all user devices
+      await sendPushToUser(strapi, user, title, body, data);
+    });
   } catch (err: any) {
     strapi?.log?.error(
       `[notifications] notifyRidersNewDelivery(order=${orderNumber}) failed: ${err?.message}`,
     );
+  }
+}
+
+/**
+ * Send a promo notification to one user.
+ */
+export async function notifyUserPromo(
+  strapi: any,
+  userId: number,
+  title: string,
+  body: string,
+  route = '/customer/home',
+): Promise<void> {
+  try {
+    const user: any = await strapi.db.query('api::user.user').findOne({
+      where: { id: userId },
+    });
+    if (!user) return;
+
+    const data = {
+      type: 'promo',
+      route,
+    };
+
+    await saveNotificationIfNotDuplicate(strapi, user.id, title, body, 'promo', undefined, data);
+    await sendPushToUser(strapi, user, title, body, data);
+  } catch (err: any) {
+    strapi?.log?.error(`[notifications] notifyUserPromo(user=${userId}) failed: ${err?.message}`);
+  }
+}
+
+/**
+ * Send a system notification to one user.
+ */
+export async function notifySystemAlert(
+  strapi: any,
+  userId: number,
+  title: string,
+  body: string,
+  route = '/customer/home',
+): Promise<void> {
+  try {
+    const user: any = await strapi.db.query('api::user.user').findOne({
+      where: { id: userId },
+    });
+    if (!user) return;
+
+    const data = {
+      type: 'system',
+      route,
+    };
+
+    await saveNotificationIfNotDuplicate(strapi, user.id, title, body, 'system', undefined, data);
+    await sendPushToUser(strapi, user, title, body, data);
+  } catch (err: any) {
+    strapi?.log?.error(`[notifications] notifySystemAlert(user=${userId}) failed: ${err?.message}`);
   }
 }

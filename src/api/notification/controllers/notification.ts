@@ -1,5 +1,11 @@
 import { factories } from '@strapi/strapi';
-import { sendPush, isFirebaseReady } from '../../../services/notification';
+import {
+  sendPush,
+  isFirebaseReady,
+  notifyUserPromo,
+  notifySystemAlert,
+} from '../../../services/notification';
+import { requireAdmin } from '../../../services/auth-helper';
 
 function parseNotificationRef(ref: unknown): { id?: number; documentId?: string } {
   const value = String(ref ?? '').trim();
@@ -174,6 +180,104 @@ export default factories.createCoreController('api::notification.notification', 
     } catch (error) {
       console.error('Mark all read error:', error);
       ctx.throw(500, 'Failed to mark notifications as read');
+    }
+  },
+
+  /**
+   * Admin: send promo notification to one or more users.
+   * POST /api/notifications/admin/send-promo
+   */
+  async sendPromo(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { title, body, route, userIds } = ctx.request.body ?? {};
+      if (!title || !body) {
+        return ctx.badRequest('title and body are required');
+      }
+
+      const normalizedUserIds = Array.isArray(userIds)
+        ? userIds
+            .map((id: any) => Number(id))
+            .filter((id: number) => Number.isInteger(id) && id > 0)
+        : [];
+
+      const targetUserIds: number[] =
+        normalizedUserIds.length > 0
+          ? normalizedUserIds
+          : (
+              await strapi.db.query('api::user.user').findMany({
+                where: { user_type: 'customer', is_active: true },
+                select: ['id'],
+              })
+            ).map((user: any) => user.id);
+
+      await Promise.all(
+        targetUserIds.map((userId) =>
+          notifyUserPromo(
+            strapi,
+            userId,
+            String(title),
+            String(body),
+            String(route || '/customer/home'),
+          ),
+        ),
+      );
+
+      ctx.body = { ok: true, deliveredTo: targetUserIds.length };
+    } catch (error) {
+      console.error('Send promo error:', error);
+      ctx.throw(500, 'Failed to send promo notifications');
+    }
+  },
+
+  /**
+   * Admin: send system notification to one or more users.
+   * POST /api/notifications/admin/send-system
+   */
+  async sendSystem(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { title, body, route, userIds } = ctx.request.body ?? {};
+      if (!title || !body) {
+        return ctx.badRequest('title and body are required');
+      }
+
+      const normalizedUserIds = Array.isArray(userIds)
+        ? userIds
+            .map((id: any) => Number(id))
+            .filter((id: number) => Number.isInteger(id) && id > 0)
+        : [];
+
+      const targetUserIds: number[] =
+        normalizedUserIds.length > 0
+          ? normalizedUserIds
+          : (
+              await strapi.db.query('api::user.user').findMany({
+                where: { is_active: true },
+                select: ['id'],
+              })
+            ).map((user: any) => user.id);
+
+      await Promise.all(
+        targetUserIds.map((userId) =>
+          notifySystemAlert(
+            strapi,
+            userId,
+            String(title),
+            String(body),
+            String(route || '/customer/home'),
+          ),
+        ),
+      );
+
+      ctx.body = { ok: true, deliveredTo: targetUserIds.length };
+    } catch (error) {
+      console.error('Send system error:', error);
+      ctx.throw(500, 'Failed to send system notifications');
     }
   },
 }));

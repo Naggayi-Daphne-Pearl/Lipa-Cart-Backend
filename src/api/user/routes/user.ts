@@ -7,6 +7,13 @@ export default {
       handler: 'user.registerDevice',
       config: { auth: false },
     },
+    // Unregister FCM token for this device/session
+    {
+      method: 'POST',
+      path: '/user/unregister-device',
+      handler: 'user.unregisterDevice',
+      config: { auth: false },
+    },
     // Delete user account (manual JWT check)
     {
       method: 'DELETE',

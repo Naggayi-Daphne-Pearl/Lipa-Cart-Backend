@@ -185,18 +185,30 @@ export default factories.createCoreController('api::address.address', ({ strapi 
       return ctx.forbidden('Only customers can set a default address');
     }
 
-    const customer = await resolveCustomer(strapi, ctx);
-    if (!customer) {
-      return ctx.badRequest('No customer profile found for this user');
-    }
-
     const existing = await findAddressRecord(strapi, ctx.params.id);
     if (!existing) {
       return ctx.notFound('Address not found');
     }
 
-    if (existing.customer?.id !== customer.id) {
-      return ctx.forbidden('You can only set your own address as default');
+    // Determine whose defaults to flip. Customers only act on their own
+    // addresses; admins scope the transaction to the address's owning
+    // customer (admins don't have a customer profile themselves, so we
+    // can't and shouldn't call resolveCustomer for them).
+    let customerId: number | null = null;
+    if (roleType === 'admin') {
+      customerId = existing.customer?.id ?? null;
+      if (!customerId) {
+        return ctx.badRequest('Address is not linked to a customer');
+      }
+    } else {
+      const customer = await resolveCustomer(strapi, ctx);
+      if (!customer) {
+        return ctx.badRequest('No customer profile found for this user');
+      }
+      if (existing.customer?.id !== customer.id) {
+        return ctx.forbidden('You can only set your own address as default');
+      }
+      customerId = customer.id;
     }
 
     // Atomically flip the default flag: clear all of this customer's defaults
@@ -204,7 +216,7 @@ export default factories.createCoreController('api::address.address', ({ strapi 
     // can't leave the customer with zero or two defaults.
     try {
       const ownedAddresses: any[] = await strapi.db.query('api::address.address').findMany({
-        where: { customer: customer.id },
+        where: { customer: customerId },
         select: ['id'],
       });
       const otherIds = ownedAddresses.map((a) => a.id).filter((id) => id !== existing.id);

@@ -1,41 +1,4 @@
 import type { Core } from '@strapi/strapi';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
-
-// ── Helper: download image from URL and upload to Strapi media library ──
-async function uploadImage(strapi: Core.Strapi, url: string, name: string) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const filePath = path.join(os.tmpdir(), `${name}.jpg`);
-    fs.writeFileSync(filePath, buffer);
-
-    const stats = fs.statSync(filePath);
-    const uploadedFiles = await strapi
-      .plugin('upload')
-      .service('upload')
-      .upload({
-        data: {},
-        files: {
-          filepath: filePath,
-          originalFilename: `${name}.jpg`,
-          mimetype: 'image/jpeg',
-          size: stats.size,
-        },
-      });
-
-    try {
-      fs.unlinkSync(filePath);
-    } catch (_) {}
-    return uploadedFiles[0] ?? null;
-  } catch (e) {
-    console.log(`  ⚠️  Image upload failed for ${name}`);
-    return null;
-  }
-}
 
 // ── Categories ──
 const categories = [
@@ -974,6 +937,95 @@ const shoppingLists = [
   },
 ];
 
+/**
+ * In-place image-URL backfill for existing entities. Used when the entities
+ * have already been seeded but their `image` field is null (e.g. seeded
+ * before commit 5947018 switched the schema from media to plain string, or
+ * with the old phase-2 upload flow that silently failed on Railway). Looks
+ * up the canonical imgbb URL from the local seed data by slug/name.
+ */
+async function backfillImageUrls(
+  strapi: Core.Strapi,
+  existingCategories: any[],
+  existingProducts: any[],
+  existingRecipes: any[],
+) {
+  const categoryUrlBySlug = new Map(categories.map((c) => [c.slug, c.imageUrl]));
+  const productUrlBySlug = new Map(products.map((p) => [p.slug, p.imageUrl]));
+  const recipeUrlBySlug = new Map(recipes.map((r) => [r.slug, r.imageUrl]));
+
+  let success = 0;
+  let skipped = 0;
+
+  for (const cat of existingCategories) {
+    if (cat.image) {
+      skipped++;
+      continue;
+    }
+    const url = categoryUrlBySlug.get(cat.slug);
+    if (!url) {
+      skipped++;
+      continue;
+    }
+    try {
+      await strapi.documents('api::category.category').update({
+        documentId: cat.documentId,
+        data: { image: url } as any,
+        status: 'published',
+      });
+      success++;
+    } catch (e) {
+      console.log(`  ⚠️  category ${cat.slug}: ${e}`);
+    }
+  }
+
+  for (const prod of existingProducts) {
+    if (prod.image) {
+      skipped++;
+      continue;
+    }
+    const url = productUrlBySlug.get(prod.slug);
+    if (!url) {
+      skipped++;
+      continue;
+    }
+    try {
+      await strapi.documents('api::product.product').update({
+        documentId: prod.documentId,
+        data: { image: url } as any,
+        status: 'published',
+      });
+      success++;
+    } catch (e) {
+      console.log(`  ⚠️  product ${prod.slug}: ${e}`);
+    }
+  }
+
+  for (const recipe of existingRecipes) {
+    if (recipe.image) {
+      skipped++;
+      continue;
+    }
+    const url = recipeUrlBySlug.get(recipe.slug);
+    if (!url) {
+      skipped++;
+      continue;
+    }
+    try {
+      await strapi.documents('api::recipe.recipe').update({
+        documentId: recipe.documentId,
+        data: { image: url } as any,
+        status: 'published',
+      });
+      success++;
+    } catch (e) {
+      console.log(`  ⚠️  recipe ${recipe.slug}: ${e}`);
+    }
+  }
+
+  console.log(`🖼️  Image backfill complete: ${success} updated, ${skipped} skipped.`);
+}
+
 // ── Main seed function ──
 async function seed(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
@@ -1017,9 +1069,31 @@ async function seed(strapi: Core.Strapi) {
     templatesHaveItems &&
     recipesHaveLinkedProducts;
 
+  // If everything is in place but the image fields are null (e.g. left over
+  // from the old upload-then-reference flow), backfill the URLs in place
+  // without wiping data.
   if (isComplete) {
-    console.log(
-      `⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes, ${existingShoppingLists.length} lists), skipping.`,
+    const sampleProduct = existingProducts[0] as any;
+    const sampleCategory = existingCategories[0] as any;
+    const sampleRecipe = existingRecipes[0] as any;
+    const imagesArePopulated =
+      Boolean(sampleProduct?.image) &&
+      Boolean(sampleCategory?.image) &&
+      Boolean(sampleRecipe?.image);
+
+    if (imagesArePopulated) {
+      console.log(
+        `⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes, ${existingShoppingLists.length} lists), skipping.`,
+      );
+      return;
+    }
+
+    console.log('🖼️  Existing data has null image fields — backfilling URLs...');
+    await backfillImageUrls(
+      strapi,
+      existingCategories as any[],
+      existingProducts as any[],
+      existingRecipes as any[],
     );
     return;
   }
@@ -1215,40 +1289,36 @@ async function seed(strapi: Core.Strapi) {
   }
 
   console.log(
-    `🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for background upload.`,
+    `🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for direct URL backfill.`,
   );
 
-  // ── Phase 2: Upload images in background (don't block server startup) ──
+  // ── Phase 2: Backfill image URLs ──
+  // The `image` field is a plain string (changed from a media relation in
+  // commit 5947018) so we just write the imgbb URL directly. We used to
+  // download and re-upload to Strapi's media library, but that fails on
+  // Railway (ephemeral filesystem) and silently leaves every product with
+  // image=null. Direct write also makes seeding much faster.
   setTimeout(async () => {
-    console.log(`🖼️  Starting background image uploads (${imageQueue.length} images)...`);
+    console.log(`🖼️  Backfilling ${imageQueue.length} image URLs...`);
     let success = 0;
     let failed = 0;
 
     for (const item of imageQueue) {
       try {
-        const image = await uploadImage(strapi, item.imageUrl, item.name);
-        if (image) {
-          await strapi.documents(item.uid as any).update({
-            documentId: item.documentId,
-            data: { image: image.url || item.imageUrl } as any,
-            status: 'published',
-          });
-          success++;
-          console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ✅`);
-        } else {
-          failed++;
-          console.log(
-            `  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ⚠️ download failed`,
-          );
-        }
+        await strapi.documents(item.uid as any).update({
+          documentId: item.documentId,
+          data: { image: item.imageUrl } as any,
+          status: 'published',
+        });
+        success++;
       } catch (e) {
         failed++;
         console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ❌ ${e}`);
       }
     }
 
-    console.log(`🖼️  Image uploads complete: ${success} succeeded, ${failed} failed.`);
-  }, 5000); // Wait 5s for server to fully start before uploading images
+    console.log(`🖼️  Image backfill complete: ${success} succeeded, ${failed} failed.`);
+  }, 5000); // Wait 5s for server to fully start before backfilling
 }
 
 export default seed;

@@ -512,58 +512,183 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
   },
 
   async bulkCreate(ctx: any) {
-    try {
-      const { items } = ctx.request.body;
+    // Server-owned validation limits
+    const MAX_ITEMS_PER_ORDER = 100;
+    const MAX_QTY_PER_ITEM = 100;
+    const MIN_ORDER_SUBTOTAL = 5000; // UGX — matches frontend free-delivery progress UI expectations
+    const SERVICE_FEE_RATE = 0.05;
+    const DELIVERY_FEE_FLAT = 3000;
 
-      if (!items || !Array.isArray(items)) {
-        return ctx.badRequest('items array is required');
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can add items to an order');
       }
 
-      const createdItems = [];
-      const failedItems = [];
+      const { items } = ctx.request.body;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return ctx.badRequest('items must be a non-empty array');
+      }
+      if (items.length > MAX_ITEMS_PER_ORDER) {
+        return ctx.badRequest(`Too many items in one request (max ${MAX_ITEMS_PER_ORDER})`);
+      }
 
-      for (let index = 0; index < items.length; index++) {
-        const itemData = items[index];
+      // All items in a single call must target the same order. Resolve and
+      // authorise it once, then validate every line item against it.
+      const firstOrderRef = items[0]?.order;
+      if (!firstOrderRef) {
+        return ctx.badRequest('Each item must reference an order');
+      }
+      const orderRecord: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: String(firstOrderRef) },
+        populate: ['customer'],
+      });
+      if (!orderRecord) {
+        return ctx.notFound('Order not found');
+      }
+      if (orderRecord.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only add items to your own orders');
+      }
+      // Items can only be added to a brand-new pending order. Once we
+      // transition to payment_confirmed (at the end of this handler), the
+      // contents and total are locked in — a second bulkCreate call would be
+      // rejected here, preventing customers from changing items after the
+      // total has been agreed.
+      if (orderRecord.status !== 'pending') {
+        return ctx.badRequest(`Cannot add items to an order in '${orderRecord.status}' state`);
+      }
+
+      const createdItems: any[] = [];
+      const failedItems: any[] = [];
+
+      for (const itemData of items) {
         try {
           const { order: orderDocId, product: productDocId, ...scalarData } = itemData;
 
-          // Resolve order documentId to numeric ID
-          let orderId = null;
-          if (orderDocId) {
-            const orderRecord: any = await strapi.db.query('api::order.order').findOne({
-              where: { documentId: orderDocId },
-            });
-            if (orderRecord) {
-              orderId = orderRecord.id;
-            } else {
-            }
+          if (!orderDocId || String(orderDocId) !== String(firstOrderRef)) {
+            failedItems.push({ item: itemData, error: 'All items must target the same order' });
+            continue;
+          }
+          if (!productDocId) {
+            failedItems.push({ item: itemData, error: 'Product reference required' });
+            continue;
           }
 
-          // Resolve product documentId to numeric ID
-          let productId = null;
-          if (productDocId) {
-            const productRecord: any = await strapi.db.query('api::product.product').findOne({
-              where: { documentId: productDocId },
+          const quantity = Number(scalarData.quantity);
+          if (!Number.isFinite(quantity) || quantity <= 0) {
+            failedItems.push({ item: itemData, error: 'Quantity must be positive' });
+            continue;
+          }
+          if (quantity > MAX_QTY_PER_ITEM) {
+            failedItems.push({
+              item: itemData,
+              error: `Quantity exceeds max of ${MAX_QTY_PER_ITEM}`,
             });
-            if (productRecord) {
-              productId = productRecord.id;
-            } else {
-            }
+            continue;
           }
 
-          // Create using db.query with numeric IDs for relations
-          const orderItem = await strapi.entityService.create('api::order-item.order-item', {
+          const productRecord: any = await strapi.db.query('api::product.product').findOne({
+            where: { documentId: String(productDocId) },
+          });
+          if (!productRecord) {
+            failedItems.push({ item: itemData, error: 'Product not found' });
+            continue;
+          }
+          if (productRecord.is_active === false) {
+            failedItems.push({
+              item: itemData,
+              error: `Product ${productRecord.name} is unavailable`,
+            });
+            continue;
+          }
+
+          // Force estimated_price to the catalog value — never trust the
+          // client's claimed price.
+          const estimatedPrice = Number(productRecord.estimated_price ?? 0);
+
+          const orderItem: any = await strapi.entityService.create('api::order-item.order-item', {
             data: {
               ...scalarData,
-              order: orderId,
-              product: productId,
+              quantity,
+              estimated_price: estimatedPrice,
+              order: orderRecord.id,
+              product: productRecord.id,
             },
           });
 
           createdItems.push(orderItem);
-        } catch (error) {
+        } catch (error: any) {
           failedItems.push({ item: itemData, error: error.message });
         }
+      }
+
+      if (createdItems.length === 0) {
+        return ctx.badRequest('No valid items to add');
+      }
+
+      // Recompute totals against ALL items currently attached to this order
+      // (not just the ones in this batch). This is defensive: bulkCreate is
+      // already restricted to brand-new pending orders so there shouldn't be
+      // existing items, but querying authoritatively means we can't be
+      // tricked by stale rows or future flow changes.
+      const linkResult: any = await strapi.db.connection.raw(
+        `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`,
+        [orderRecord.id],
+      );
+      const linkRows = linkResult?.rows || linkResult || [];
+      const itemIds = Array.isArray(linkRows) ? linkRows.map((r: any) => r.order_item_id) : [];
+      const allOrderItems: any[] =
+        itemIds.length > 0
+          ? await strapi.db.query('api::order-item.order-item').findMany({
+              where: { id: { $in: itemIds } },
+            })
+          : [];
+
+      const subtotal = allOrderItems.reduce((sum, item) => {
+        const price = Number(item.estimated_price ?? 0);
+        const qty = Number(item.quantity ?? 1);
+        return sum + price * qty;
+      }, 0);
+
+      if (subtotal < MIN_ORDER_SUBTOTAL) {
+        // Roll back the items we just created so we don't leave a
+        // half-populated order behind.
+        for (const item of createdItems) {
+          await strapi.entityService.delete('api::order-item.order-item', item.id).catch(() => {});
+        }
+        return ctx.badRequest(`Minimum order value is UGX ${MIN_ORDER_SUBTOTAL.toLocaleString()}`);
+      }
+
+      const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
+      const deliveryFee = DELIVERY_FEE_FLAT;
+      const total = subtotal + serviceFee + deliveryFee;
+
+      // Single update: persist the recomputed totals AND transition the
+      // order from pending to payment_confirmed in one step. After this the
+      // order is locked — bulkCreate's status guard will reject any further
+      // attempts to mutate items, and shoppers can claim the order.
+      try {
+        await strapi.entityService.update('api::order.order', orderRecord.id, {
+          data: {
+            subtotal,
+            service_fee: serviceFee,
+            delivery_fee: deliveryFee,
+            total,
+            status: 'payment_confirmed',
+            payment_confirmed_at: new Date(),
+          },
+        });
+      } catch (updateErr: any) {
+        // The items are already in the DB but the order metadata didn't
+        // land. Roll back the new items so the customer can retry from a
+        // clean slate rather than ending up with a bricked half-order.
+        for (const item of createdItems) {
+          await strapi.entityService.delete('api::order-item.order-item', item.id).catch(() => {});
+        }
+        console.error('ERROR: Failed to finalize order after bulkCreate:', updateErr);
+        return ctx.throw(500, 'Failed to finalize order');
       }
 
       ctx.body = {
@@ -571,9 +696,14 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         meta: {
           count: createdItems.length,
           failed: failedItems.length,
+          subtotal,
+          service_fee: serviceFee,
+          delivery_fee: deliveryFee,
+          total,
+          status: 'payment_confirmed',
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('ERROR: Bulk create failed:', error);
       ctx.throw(500, 'Failed to create order items in bulk');
     }

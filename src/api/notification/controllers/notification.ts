@@ -171,12 +171,32 @@ export default factories.createCoreController('api::notification.notification', 
       });
       if (!customUser) return ctx.notFound('User not found');
 
-      await strapi.db.query('api::notification.notification').updateMany({
+      const unread = await strapi.db.query('api::notification.notification').findMany({
         where: { user: customUser.id, is_read: false },
-        data: { is_read: true },
+        select: ['id', 'documentId'],
       });
 
-      ctx.body = { ok: true };
+      if (!Array.isArray(unread) || unread.length == 0) {
+        ctx.body = { ok: true, updated: 0 };
+        return;
+      }
+
+      await Promise.all(
+        unread.map((item: any) => {
+          const ref = parseNotificationRef(item?.id ?? item?.documentId);
+          if (!ref.id && !ref.documentId) return Promise.resolve(null);
+
+          return strapi.db.query('api::notification.notification').update({
+            where: {
+              ...ref,
+              user: customUser.id,
+            },
+            data: { is_read: true },
+          });
+        }),
+      );
+
+      ctx.body = { ok: true, updated: unread.length };
     } catch (error) {
       console.error('Mark all read error:', error);
       ctx.throw(500, 'Failed to mark notifications as read');

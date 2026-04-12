@@ -1,4 +1,129 @@
 import type { Core } from '@strapi/strapi';
+import fs from 'fs';
+import path from 'path';
+
+// ── Image upload helpers ────────────────────────────────────────────────
+// Seed images live in public/uploads/. Filenames follow Strapi's
+// `<basename>_<hash>.<ext>` convention, so we strip the trailing hash
+// to index them by basename and look them up from each entity's slug
+// (dashes → underscores).
+
+// Note: Strapi always runs from the project root, so process.cwd() is stable.
+// Avoid __dirname because it points into dist/scripts/ when compiled.
+const UPLOADS_DIR = path.join(process.cwd(), 'public', 'uploads');
+
+function buildLocalImageMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!fs.existsSync(UPLOADS_DIR)) return map;
+  for (const file of fs.readdirSync(UPLOADS_DIR)) {
+    if (!/\.(jpe?g|png|webp)$/i.test(file)) continue;
+    const base = file.replace(/_[a-f0-9]+\.[a-z]+$/i, '').toLowerCase();
+    if (!map.has(base)) {
+      map.set(base, path.join(UPLOADS_DIR, file));
+    }
+  }
+  return map;
+}
+
+function slugToBaseName(slug: string): string {
+  return slug.toLowerCase().replace(/-/g, '_');
+}
+
+// Slug → image basename aliases for seeds whose canonical file was renamed
+// or shared with a sibling entity. Keeps the seed script resilient without
+// forcing a rename of the existing public/uploads/ assets.
+const IMAGE_BASENAME_ALIASES: Record<string, string> = {
+  chicken: 'chicken_tikka_masala',
+  beef: 'beef_stir_fry',
+  bread_bakery: 'bread_loaf',
+  milk_yogurt: 'fresh_milk_1l',
+  fish_seafood: 'tilapia',
+  rice_maize: 'rice_1kg',
+  fresh_fruits: 'fruits_vegetables',
+  fresh_vegetables: 'fruits_vegetables',
+  herbs_spices: 'fruits_vegetables',
+  whole_chicken: 'chicken_tikka_masala',
+  chicken_breast: 'chicken_tikka_masala',
+  beef_stew_meat: 'beef_stir_fry',
+  minced_beef: 'beef_stir_fry',
+};
+
+function resolveLocalImage(slug: string, imageMap: Map<string, string>): string | null {
+  const base = slugToBaseName(slug);
+  if (imageMap.has(base)) return imageMap.get(base)!;
+
+  const alias = IMAGE_BASENAME_ALIASES[base];
+  if (alias && imageMap.has(alias)) return imageMap.get(alias)!;
+
+  // Last resort: any basename that starts with the slug's first token.
+  // Prevents "chicken" from accidentally matching "bread_*" but still lets
+  // "watermelon" pick up any future `watermelon_*.jpg` drop-in.
+  const prefix = base.split('_')[0];
+  for (const [key, filePath] of imageMap) {
+    if (key === prefix || key.startsWith(`${prefix}_`)) return filePath;
+  }
+  return null;
+}
+
+/// Uploads a local image and links it to a target entity's media field in
+/// one atomic operation. We pass `ref`/`refId`/`field` to the upload service
+/// so Strapi's upload plugin handles the morph join itself — calling
+/// `strapi.documents().update({ image: id })` on top of a freshly uploaded
+/// file triggers a delete-then-insert inside the Document API transaction
+/// that aborts on Postgres for single-media fields.
+async function attachSeedImage(
+  strapi: Core.Strapi,
+  uid: string,
+  documentId: string,
+  slug: string,
+  imageMap: Map<string, string>,
+): Promise<boolean> {
+  const localPath = resolveLocalImage(slug, imageMap);
+  if (!localPath) {
+    console.log(`  🖼️  ${slug} ⚠️  no local file (skipping)`);
+    return false;
+  }
+
+  // Upload plugin needs a numeric entity id, not a documentId.
+  const entity = await (strapi.db.query as any)(uid).findOne({
+    where: { documentId },
+  });
+  if (!entity) {
+    console.log(`  🖼️  ${slug} ❌ entity not found for documentId=${documentId}`);
+    return false;
+  }
+
+  try {
+    const stats = fs.statSync(localPath);
+    const ext = path.extname(localPath).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    await (strapi as any)
+      .plugin('upload')
+      .service('upload')
+      .upload({
+        data: {
+          fileInfo: {
+            name: slug,
+            alternativeText: slug,
+            caption: slug,
+          },
+          ref: uid,
+          refId: entity.id,
+          field: 'image',
+        },
+        files: {
+          filepath: localPath,
+          originalFilename: path.basename(localPath),
+          mimetype: mime,
+          size: stats.size,
+        },
+      });
+    return true;
+  } catch (e) {
+    console.log(`  🖼️  ${slug} ❌ upload failed: ${(e as Error).message}`);
+    return false;
+  }
+}
 
 // ── Categories ──
 const categories = [
@@ -938,11 +1063,10 @@ const shoppingLists = [
 ];
 
 /**
- * In-place image-URL backfill for existing entities. Used when the entities
- * have already been seeded but their `image` field is null (e.g. seeded
- * before commit 5947018 switched the schema from media to plain string, or
- * with the old phase-2 upload flow that silently failed on Railway). Looks
- * up the canonical imgbb URL from the local seed data by slug/name.
+ * In-place image backfill for existing entities whose `image` media
+ * relation is still null. Matches each entity's slug to a local file in
+ * public/uploads/ and uploads it via Strapi's upload service (which
+ * delegates to the configured Cloudinary provider).
  */
 async function backfillImageUrls(
   strapi: Core.Strapi,
@@ -950,9 +1074,11 @@ async function backfillImageUrls(
   existingProducts: any[],
   existingRecipes: any[],
 ) {
-  const categoryUrlBySlug = new Map(categories.map((c) => [c.slug, c.imageUrl]));
-  const productUrlBySlug = new Map(products.map((p) => [p.slug, p.imageUrl]));
-  const recipeUrlBySlug = new Map(recipes.map((r) => [r.slug, r.imageUrl]));
+  const imageMap = buildLocalImageMap();
+  if (imageMap.size === 0) {
+    console.log(`  ⚠️  public/uploads/ is empty or missing — skipping backfill.`);
+    return;
+  }
 
   let success = 0;
   let skipped = 0;
@@ -962,21 +1088,15 @@ async function backfillImageUrls(
       skipped++;
       continue;
     }
-    const url = categoryUrlBySlug.get(cat.slug);
-    if (!url) {
-      skipped++;
-      continue;
-    }
-    try {
-      await strapi.documents('api::category.category').update({
-        documentId: cat.documentId,
-        data: { image: url } as any,
-        status: 'published',
-      });
-      success++;
-    } catch (e) {
-      console.log(`  ⚠️  category ${cat.slug}: ${e}`);
-    }
+    const ok = await attachSeedImage(
+      strapi,
+      'api::category.category',
+      cat.documentId,
+      cat.slug,
+      imageMap,
+    );
+    if (ok) success++;
+    else skipped++;
   }
 
   for (const prod of existingProducts) {
@@ -984,21 +1104,15 @@ async function backfillImageUrls(
       skipped++;
       continue;
     }
-    const url = productUrlBySlug.get(prod.slug);
-    if (!url) {
-      skipped++;
-      continue;
-    }
-    try {
-      await strapi.documents('api::product.product').update({
-        documentId: prod.documentId,
-        data: { image: url } as any,
-        status: 'published',
-      });
-      success++;
-    } catch (e) {
-      console.log(`  ⚠️  product ${prod.slug}: ${e}`);
-    }
+    const ok = await attachSeedImage(
+      strapi,
+      'api::product.product',
+      prod.documentId,
+      prod.slug,
+      imageMap,
+    );
+    if (ok) success++;
+    else skipped++;
   }
 
   for (const recipe of existingRecipes) {
@@ -1006,21 +1120,15 @@ async function backfillImageUrls(
       skipped++;
       continue;
     }
-    const url = recipeUrlBySlug.get(recipe.slug);
-    if (!url) {
-      skipped++;
-      continue;
-    }
-    try {
-      await strapi.documents('api::recipe.recipe').update({
-        documentId: recipe.documentId,
-        data: { image: url } as any,
-        status: 'published',
-      });
-      success++;
-    } catch (e) {
-      console.log(`  ⚠️  recipe ${recipe.slug}: ${e}`);
-    }
+    const ok = await attachSeedImage(
+      strapi,
+      'api::recipe.recipe',
+      recipe.documentId,
+      recipe.slug,
+      imageMap,
+    );
+    if (ok) success++;
+    else skipped++;
   }
 
   console.log(`🖼️  Image backfill complete: ${success} updated, ${skipped} skipped.`);
@@ -1292,33 +1400,29 @@ async function seed(strapi: Core.Strapi) {
     `🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for direct URL backfill.`,
   );
 
-  // ── Phase 2: Backfill image URLs ──
-  // The `image` field is a plain string (changed from a media relation in
-  // commit 5947018) so we just write the imgbb URL directly. We used to
-  // download and re-upload to Strapi's media library, but that fails on
-  // Railway (ephemeral filesystem) and silently leaves every product with
-  // image=null. Direct write also makes seeding much faster.
+  // ── Phase 2: Upload seed images to the configured upload provider ──
+  // We read originals from public/uploads/ and push them through Strapi's
+  // upload service, which delegates to the Cloudinary provider configured
+  // in config/plugins.ts. This avoids Railway's ephemeral-disk problem.
   setTimeout(async () => {
-    console.log(`🖼️  Backfilling ${imageQueue.length} image URLs...`);
+    console.log(`🖼️  Uploading ${imageQueue.length} seed images...`);
+    const imageMap = buildLocalImageMap();
+    if (imageMap.size === 0) {
+      console.log(`  ⚠️  public/uploads/ is empty or missing — skipping image upload.`);
+      return;
+    }
+
     let success = 0;
     let failed = 0;
 
     for (const item of imageQueue) {
-      try {
-        await strapi.documents(item.uid as any).update({
-          documentId: item.documentId,
-          data: { image: item.imageUrl } as any,
-          status: 'published',
-        });
-        success++;
-      } catch (e) {
-        failed++;
-        console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ❌ ${e}`);
-      }
+      const ok = await attachSeedImage(strapi, item.uid, item.documentId, item.name, imageMap);
+      if (ok) success++;
+      else failed++;
     }
 
-    console.log(`🖼️  Image backfill complete: ${success} succeeded, ${failed} failed.`);
-  }, 5000); // Wait 5s for server to fully start before backfilling
+    console.log(`🖼️  Image upload complete: ${success} succeeded, ${failed} failed.`);
+  }, 5000); // Wait 5s for server to fully start before uploading
 }
 
 export default seed;

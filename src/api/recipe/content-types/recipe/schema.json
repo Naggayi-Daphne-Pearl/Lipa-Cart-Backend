@@ -24,7 +24,9 @@
       "type": "richtext"
     },
     "image": {
-      "type": "string"
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": ["images"]
     },
     "author_name": {
       "type": "string"

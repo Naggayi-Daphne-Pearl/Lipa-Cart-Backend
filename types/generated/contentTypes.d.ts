@@ -474,7 +474,7 @@ export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     description: Schema.Attribute.Text;
-    image: Schema.Attribute.String;
+    image: Schema.Attribute.Media<'images'>;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::category.category'> &
@@ -720,7 +720,7 @@ export interface ApiProductProduct extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     description: Schema.Attribute.Text;
     estimated_price: Schema.Attribute.Decimal & Schema.Attribute.Required;
-    image: Schema.Attribute.String;
+    image: Schema.Attribute.Media<'images'>;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::product.product'> &
@@ -838,7 +838,7 @@ export interface ApiRecipeRecipe extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     description: Schema.Attribute.RichText;
     difficulty: Schema.Attribute.Enumeration<['easy', 'medium', 'hard']>;
-    image: Schema.Attribute.String;
+    image: Schema.Attribute.Media<'images'>;
     ingredients: Schema.Attribute.Component<'recipe.ingredient', true>;
     instructions: Schema.Attribute.Component<'recipe.instruction', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;

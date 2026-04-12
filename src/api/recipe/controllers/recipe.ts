@@ -1,9 +1,12 @@
 import { factories } from '@strapi/strapi';
 
 const defaultRecipePopulate = {
+  image: true,
   ingredients: {
     populate: {
-      product: true,
+      product: {
+        populate: { image: true },
+      },
     },
   },
   instructions: true,

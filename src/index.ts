@@ -27,7 +27,7 @@ export default {
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
     // Setup roles first
     await setupRoles(strapi);
-    
+
     const publicRole = await strapi
       .query('plugin::users-permissions.role')
       .findOne({ where: { type: 'public' } });
@@ -46,7 +46,7 @@ export default {
       { action: 'findOne', contentType: 'api::recipe.recipe' },
       { action: 'find', contentType: 'api::shopping-list.shopping-list' },
       { action: 'findOne', contentType: 'api::shopping-list.shopping-list' },
-      
+
       // Users & Profiles
       { action: 'find', contentType: 'api::user.user' },
       { action: 'findOne', contentType: 'api::user.user' },
@@ -56,7 +56,7 @@ export default {
       { action: 'findOne', contentType: 'api::shopper.shopper' },
       { action: 'find', contentType: 'api::rider.rider' },
       { action: 'findOne', contentType: 'api::rider.rider' },
-      
+
       // Notifications
       { action: 'find', contentType: 'api::notification.notification' },
       { action: 'findOne', contentType: 'api::notification.notification' },
@@ -70,19 +70,15 @@ export default {
       { action: 'findOne', contentType: 'api::payment.payment' },
       { action: 'find', contentType: 'api::rating.rating' },
       { action: 'findOne', contentType: 'api::rating.rating' },
-      { action: 'find', contentType: 'api::address.address' },
-      { action: 'findOne', contentType: 'api::address.address' },
     ];
 
     for (const { action, contentType } of publicPermissions) {
-      const existing = await strapi
-        .query('plugin::users-permissions.permission')
-        .findOne({
-          where: {
-            action: `${contentType}.${action}`,
-            role: publicRole.id,
-          },
-        });
+      const existing = await strapi.query('plugin::users-permissions.permission').findOne({
+        where: {
+          action: `${contentType}.${action}`,
+          role: publicRole.id,
+        },
+      });
 
       if (!existing) {
         await strapi.query('plugin::users-permissions.permission').create({

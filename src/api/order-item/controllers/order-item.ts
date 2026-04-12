@@ -1,5 +1,55 @@
 import { factories } from '@strapi/strapi';
 import { sendPush, saveNotification, isFirebaseReady } from '../../../services/notification';
+import { requireAuth } from '../../../services/auth-helper';
+
+// Maximum multiplier of the catalog estimated_price that a shopper is allowed
+// to set as actual_price. Catches order-of-magnitude tampering / fat-fingers
+// while leaving room for real grocery price variance.
+const MAX_PRICE_MULTIPLIER = 3;
+
+/**
+ * Validates a shopper-supplied actual_price against the catalog price for the
+ * linked product. Returns an error message if the price is unacceptable, or
+ * null if it's fine. Items with no linked product (free-text items) are not
+ * capped — there's no catalog price to compare against.
+ */
+async function validateActualPrice(
+  strapi: any,
+  item: any,
+  actualPrice: any,
+): Promise<string | null> {
+  if (actualPrice === undefined || actualPrice === null) return null;
+  const price = Number(actualPrice);
+  if (!Number.isFinite(price) || price < 0) {
+    return 'actual_price must be a non-negative number';
+  }
+  // Look up the linked product (if any) to compare against catalog price.
+  let productId: number | null = null;
+  if (item?.product?.id) {
+    productId = item.product.id;
+  } else {
+    const linkRow: any = await strapi.db.connection
+      .raw(`SELECT product_id FROM order_items_product_lnk WHERE order_item_id = ? LIMIT 1`, [
+        item.id,
+      ])
+      .catch(() => null);
+    const rows = linkRow?.rows || linkRow;
+    if (rows && rows.length > 0) {
+      productId = rows[0].product_id;
+    }
+  }
+  if (!productId) return null; // free-text item, nothing to compare
+  const product: any = await strapi.db.query('api::product.product').findOne({
+    where: { id: productId },
+  });
+  if (!product || !Number.isFinite(Number(product.estimated_price))) return null;
+  const catalogPrice = Number(product.estimated_price);
+  const ceiling = catalogPrice * MAX_PRICE_MULTIPLIER;
+  if (price > ceiling) {
+    return `actual_price ${price} exceeds ${MAX_PRICE_MULTIPLIER}x catalog price (${catalogPrice}) for ${product.name}`;
+  }
+  return null;
+}
 
 export default factories.createCoreController('api::order-item.order-item', ({ strapi }) => ({
   async create(ctx: any) {
@@ -18,32 +68,33 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
    */
   async shopperUpdate(ctx: any) {
     try {
-      // Manual JWT verification (auth: false on route)
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      try {
-        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        const user = await strapi
-          .query('plugin::users-permissions.user')
-          .findOne({ where: { id: payload.id } });
-        if (!user) return ctx.unauthorized('User not found');
-      } catch {
-        return ctx.unauthorized('Invalid token');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can update order items');
       }
 
       const { id } = ctx.params; // documentId of the order item
       const { found, actual_price } = ctx.request.body;
 
-      // Find the order item
+      // Find the order item with the assigned shopper so we can verify ownership.
       const item: any = await strapi.db.query('api::order-item.order-item').findOne({
         where: { documentId: id },
-        populate: ['order', 'order.shopper'],
+        populate: { order: { populate: ['shopper'] } },
       });
 
       if (!item) return ctx.notFound('Order item not found');
+
+      if (item.order?.shopper?.id !== customUser.id) {
+        return ctx.forbidden('You are not assigned to this order');
+      }
+
+      // Cap actual_price against the catalog price for linked products.
+      const priceError = await validateActualPrice(strapi, item, actual_price);
+      if (priceError) {
+        return ctx.badRequest(priceError);
+      }
 
       // Build update data
       const updateData: any = {};
@@ -68,20 +119,11 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
    */
   async batchUpdate(ctx: any) {
     try {
-      // Manual JWT verification (auth: false on route)
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      try {
-        const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        const user = await strapi
-          .query('plugin::users-permissions.user')
-          .findOne({ where: { id: payload.id } });
-        if (!user) return ctx.unauthorized('User not found');
-      } catch {
-        return ctx.unauthorized('Invalid token');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can update order items');
       }
 
       const { items } = ctx.request.body;
@@ -98,22 +140,37 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           const { documentId, found, actual_price, shopper_notes, substitution_approved } =
             itemUpdate;
 
-          // Support both documentId (string) and numeric id lookups
+          // Support both documentId (string) and numeric id lookups,
+          // populating order.shopper so we can verify the caller owns this item.
           let item: any = null;
           const isNumericId = /^\d+$/.test(String(documentId));
           if (isNumericId) {
             item = await strapi.db.query('api::order-item.order-item').findOne({
               where: { id: Number(documentId) },
+              populate: { order: { populate: ['shopper'] } },
             });
           }
           if (!item) {
             item = await strapi.db.query('api::order-item.order-item').findOne({
               where: { documentId },
+              populate: { order: { populate: ['shopper'] } },
             });
           }
 
           if (!item) {
             failed.push({ documentId, error: 'Not found' });
+            continue;
+          }
+
+          if (item.order?.shopper?.id !== customUser.id) {
+            failed.push({ documentId, error: 'Not your assigned order' });
+            continue;
+          }
+
+          // Cap actual_price against catalog price.
+          const priceError = await validateActualPrice(strapi, item, actual_price);
+          if (priceError) {
+            failed.push({ documentId, error: priceError });
             continue;
           }
 
@@ -280,6 +337,13 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         return ctx.forbidden('You do not have permission to respond to this substitute');
       }
 
+      // Block substitution responses on terminal-state orders so we don't trigger
+      // ghost notifications or mutate items on completed/cancelled orders.
+      const inactiveStatuses = ['delivered', 'cancelled', 'refunded'];
+      if (inactiveStatuses.includes(order.status)) {
+        return ctx.badRequest('This order is no longer active');
+      }
+
       const updatePayload: any = {
         substitution_approved: approved,
       };
@@ -352,21 +416,12 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
    */
   async suggestSubstitute(ctx: any) {
     try {
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+      if (!customUser || customUser.user_type !== 'shopper') {
+        return ctx.forbidden('Only shoppers can suggest substitutes');
       }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-      });
-      if (!strapiUser) return ctx.unauthorized('User not found');
 
       const { id } = ctx.params; // documentId of the order item
       const { substitute_name, substitute_price } = ctx.request.body;
@@ -377,9 +432,13 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
       const item: any = await strapi.db.query('api::order-item.order-item').findOne({
         where: { documentId: id },
-        populate: ['order'],
+        populate: { order: { populate: ['shopper'] } },
       });
       if (!item) return ctx.notFound('Order item not found');
+
+      if (item.order?.shopper?.id !== customUser.id) {
+        return ctx.forbidden('You are not assigned to this order');
+      }
 
       // Build backward-compat shopper_notes
       const priceLabel = substitute_price ? ` (UGX ${Math.round(substitute_price)})` : '';

@@ -10,6 +10,64 @@ import { requireAuth } from '../../../services/auth-helper';
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   async find(ctx: any) {
     try {
+      // Authenticate via the default auth middleware (route uses standard auth)
+      // and resolve the caller's custom user record so we can apply role-based scoping.
+      const strapiUser = ctx.state.user;
+      if (!strapiUser) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+      if (!customUser) {
+        return ctx.forbidden('User profile not found');
+      }
+
+      // Build a role-based filter so callers only see orders they're entitled to.
+      // Shoppers/riders also see unassigned orders in their pickup pool so they can
+      // discover and claim available work via the same endpoint.
+      let scopeFilter: any = null;
+      switch (customUser.user_type) {
+        case 'admin':
+          scopeFilter = null; // unrestricted
+          break;
+        case 'customer':
+          scopeFilter = { customer: { id: { $eq: customUser.id } } };
+          break;
+        case 'shopper':
+          scopeFilter = {
+            $or: [
+              { shopper: { id: { $eq: customUser.id } } },
+              {
+                $and: [
+                  { status: { $eq: 'payment_confirmed' } },
+                  { shopper: { id: { $null: true } } },
+                ],
+              },
+            ],
+          };
+          break;
+        case 'rider':
+          scopeFilter = {
+            $or: [
+              { rider: { id: { $eq: customUser.id } } },
+              {
+                $and: [{ status: { $eq: 'ready_for_pickup' } }, { rider: { id: { $null: true } } }],
+              },
+            ],
+          };
+          break;
+        default:
+          return ctx.forbidden('Unknown user type');
+      }
+
+      if (scopeFilter) {
+        const existingFilters = ctx.query.filters;
+        ctx.query.filters = existingFilters
+          ? { $and: [existingFilters, scopeFilter] }
+          : scopeFilter;
+      }
+
       // Override populate to always include all needed relations
       // This avoids complex query string parsing issues with Strapi v5
       ctx.query.populate = {
@@ -42,6 +100,44 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
   async findOne(ctx: any) {
     try {
+      // Authenticate and resolve the caller's custom user record.
+      const strapiUser = ctx.state.user;
+      if (!strapiUser) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+      if (!customUser) {
+        return ctx.forbidden('User profile not found');
+      }
+
+      // Pre-fetch the order with just the relations we need for the access check.
+      // This is a small extra query but lets us reject IDOR attempts before exposing
+      // any data via the populated response.
+      const { id } = ctx.params;
+      const orderForCheck: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['customer', 'shopper', 'rider'],
+      });
+      if (!orderForCheck) {
+        return ctx.notFound('Order not found');
+      }
+
+      const isAuthorized =
+        customUser.user_type === 'admin' ||
+        (customUser.user_type === 'customer' && orderForCheck.customer?.id === customUser.id) ||
+        (customUser.user_type === 'shopper' &&
+          (orderForCheck.shopper?.id === customUser.id ||
+            (!orderForCheck.shopper && orderForCheck.status === 'payment_confirmed'))) ||
+        (customUser.user_type === 'rider' &&
+          (orderForCheck.rider?.id === customUser.id ||
+            (!orderForCheck.rider && orderForCheck.status === 'ready_for_pickup')));
+
+      if (!isAuthorized) {
+        return ctx.forbidden('You do not have access to this order');
+      }
+
       // Ensure order_items are always populated
       if (!ctx.query.populate) {
         ctx.query.populate = {};
@@ -212,9 +308,14 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       const order: any = await strapi.db.query('api::order.order').findOne({
         where: { documentId: id },
+        populate: ['shopper'],
       });
 
       if (!order) return ctx.notFound('Order not found');
+
+      if (order.shopper?.id !== customUser.id) {
+        return ctx.forbidden('You can only unclaim orders you have claimed');
+      }
 
       if (order.status !== 'shopper_assigned') {
         return ctx.badRequest('Can only unclaim orders that have not started shopping yet');
@@ -292,9 +393,10 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       const updateData: any = { status };
       if (status === 'shopping') updateData.shopping_started_at = new Date();
       if (status === 'ready_for_pickup') {
-        updateData.shopping_completed_at = new Date();
-
-        // Recalculate total based on found items with actual prices
+        // Recalculate total from order items. We REQUIRE every found item to have
+        // an actual_price set — silently falling back to estimated_price (or 0)
+        // lets shoppers send free items to the customer.
+        let actualSubtotal = 0;
         try {
           const linkResult = await strapi.db.connection.raw(
             `SELECT order_item_id FROM order_items_order_lnk WHERE order_id = ?`,
@@ -303,24 +405,33 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           const linkRows = linkResult?.rows || linkResult || [];
           const itemIds = Array.isArray(linkRows) ? linkRows.map((r: any) => r.order_item_id) : [];
 
-          const orderItems: any[] =
-            itemIds.length > 0
-              ? await strapi.db.query('api::order-item.order-item').findMany({
-                  where: { id: { $in: itemIds } },
-                })
-              : [];
+          if (itemIds.length === 0) {
+            return ctx.badRequest('Cannot mark order ready: no items found');
+          }
 
-          let actualSubtotal = 0;
+          const orderItems: any[] = await strapi.db.query('api::order-item.order-item').findMany({
+            where: { id: { $in: itemIds } },
+          });
+
+          const missingPrice: string[] = [];
           for (const item of orderItems) {
-            if (item.found === true || item.found === 1) {
-              const price = item.actual_price ?? item.estimated_price ?? 0;
-              const qty = item.quantity ?? 1;
-              actualSubtotal += price * qty;
+            const isFound = item.found === true || item.found === 1;
+            if (!isFound) continue;
+            const price = Number(item.actual_price);
+            if (!Number.isFinite(price) || price <= 0) {
+              missingPrice.push(item.product_name || `item ${item.id}`);
+              continue;
             }
+            const qty = Number(item.quantity ?? 1);
+            actualSubtotal += price * qty;
+          }
+
+          if (missingPrice.length > 0) {
+            return ctx.badRequest(`Set an actual price for: ${missingPrice.join(', ')}`);
           }
 
           const serviceFeeRate = 0.05;
-          const actualServiceFee = actualSubtotal * serviceFeeRate;
+          const actualServiceFee = Math.round(actualSubtotal * serviceFeeRate);
           const deliveryFee = order.delivery_fee || 0;
           const actualTotal = actualSubtotal + actualServiceFee + deliveryFee;
 
@@ -329,8 +440,10 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           updateData.total = actualTotal;
         } catch (calcErr: any) {
           console.error('Failed to recalculate order total:', calcErr?.message);
-          // Continue with status update even if recalculation fails
+          return ctx.throw(500, 'Failed to recalculate order total');
         }
+
+        updateData.shopping_completed_at = new Date();
       }
 
       const updated = await strapi.entityService.update('api::order.order', order.id, {
@@ -719,17 +832,82 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
   },
 
   async createGuestOrder(ctx: any) {
-    try {
-      const { phone, address_line, city, landmark, subtotal, service_fee, delivery_fee, total } =
-        ctx.request.body;
+    // Pricing constants — must mirror frontend `AppConstants` so totals stay
+    // consistent. Server is the source of truth: client-supplied totals are
+    // ignored entirely to prevent tampering.
+    const SERVICE_FEE_RATE = 0.05;
+    const DELIVERY_FEE_FLAT = 3000;
 
-      // Validate required fields
+    try {
+      const { phone, name, address_line, city, landmark, items } = ctx.request.body;
+
       if (!phone || !address_line) {
         return ctx.badRequest('phone and address_line are required');
       }
+      if (!Array.isArray(items) || items.length === 0) {
+        return ctx.badRequest('items must be a non-empty array');
+      }
+
+      // Resolve every product up-front so we can validate existence/availability
+      // and compute the authoritative subtotal before persisting anything.
+      const resolvedItems: Array<{
+        product: any;
+        quantity: number;
+        unit: string;
+        special_instructions?: string;
+      }> = [];
+
+      for (const raw of items) {
+        const productRef = raw?.product;
+        const quantity = Number(raw?.quantity);
+        if (!productRef || !Number.isFinite(quantity) || quantity <= 0) {
+          return ctx.badRequest('Each item requires a product and positive quantity');
+        }
+        const unit =
+          typeof raw?.unit === 'string' && raw.unit.trim().length > 0 ? raw.unit.trim() : 'pcs';
+
+        // Accept either documentId (string) or numeric id
+        let product: any = await strapi.db.query('api::product.product').findOne({
+          where: { documentId: String(productRef) },
+        });
+        if (!product) {
+          const numericId = Number(productRef);
+          if (Number.isFinite(numericId)) {
+            product = await strapi.db.query('api::product.product').findOne({
+              where: { id: numericId },
+            });
+          }
+        }
+
+        if (!product) {
+          return ctx.badRequest(`Product ${productRef} not found`);
+        }
+        if (product.is_active === false) {
+          return ctx.badRequest(`Product ${product.name} is not available`);
+        }
+
+        resolvedItems.push({
+          product,
+          quantity,
+          unit,
+          special_instructions: raw?.special_instructions,
+        });
+      }
+
+      // Server-side total computation. Client cannot influence these values.
+      const subtotal = resolvedItems.reduce(
+        (sum, item) => sum + Number(item.product.estimated_price || 0) * item.quantity,
+        0,
+      );
+      if (subtotal <= 0) {
+        return ctx.badRequest('Order subtotal must be greater than zero');
+      }
+      const service_fee = Math.round(subtotal * SERVICE_FEE_RATE);
+      const delivery_fee = DELIVERY_FEE_FLAT;
+      const total = subtotal + service_fee + delivery_fee;
 
       // Find or create custom user by phone
-      let customUser = await strapi.query('api::user.user').findOne({
+      let customUser: any = await strapi.query('api::user.user').findOne({
         where: { phone },
       });
 
@@ -737,14 +915,20 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         customUser = await strapi.entityService.create('api::user.user', {
           data: {
             phone,
+            name: name ?? null,
             user_type: 'customer',
             is_active: true,
           },
         });
+      } else if (name && !customUser.name) {
+        // Backfill name if we have one and the existing user doesn't.
+        await strapi.entityService.update('api::user.user', customUser.id, {
+          data: { name },
+        });
       }
 
       // Create address record
-      const address = await strapi.entityService.create('api::address.address', {
+      const address: any = await strapi.entityService.create('api::address.address', {
         data: {
           address_line,
           city: city ?? null,
@@ -752,25 +936,67 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         },
       });
 
-      // Generate order number
+      // Create order with server-computed totals.
       const orderNumber = `LC${Date.now().toString().slice(-8)}`;
+      let order: any;
+      try {
+        order = await strapi.entityService.create('api::order.order', {
+          data: {
+            order_number: orderNumber,
+            customer: customUser.id,
+            delivery_address: address.id,
+            subtotal,
+            service_fee,
+            delivery_fee,
+            total,
+            status: 'pending',
+          },
+        });
+      } catch (orderErr) {
+        console.error('Failed to persist guest order:', orderErr);
+        // Roll back the orphan address so we don't accumulate junk records.
+        await strapi.entityService.delete('api::address.address', address.id).catch(() => {});
+        return ctx.throw(500, 'Failed to create guest order');
+      }
 
-      // Create order
-      const order = await strapi.entityService.create('api::order.order', {
-        data: {
-          order_number: orderNumber,
-          customer: customUser.id,
-          delivery_address: address.id,
-          subtotal,
-          service_fee,
-          delivery_fee,
-          total,
-          status: 'pending',
+      // Persist order_items. If any fail, roll back the order so the customer
+      // doesn't end up with an order containing partial items.
+      const createdItemIds: number[] = [];
+      try {
+        for (const item of resolvedItems) {
+          const created: any = await strapi.entityService.create('api::order-item.order-item', {
+            data: {
+              order: order.id,
+              product: item.product.id,
+              product_name: item.product.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              estimated_price: item.product.estimated_price,
+              special_instructions: item.special_instructions ?? null,
+            },
+          });
+          createdItemIds.push(created.id);
+        }
+      } catch (itemErr) {
+        console.error('Failed to persist guest order items, rolling back:', itemErr);
+        for (const itemId of createdItemIds) {
+          await strapi.entityService.delete('api::order-item.order-item', itemId).catch(() => {});
+        }
+        await strapi.entityService.delete('api::order.order', order.id).catch(() => {});
+        await strapi.entityService.delete('api::address.address', address.id).catch(() => {});
+        return ctx.throw(500, 'Failed to create guest order items');
+      }
+
+      // Re-fetch with full population so the client gets a complete order back.
+      const fullOrder = await strapi.entityService.findOne('api::order.order', order.id, {
+        populate: {
+          order_items: { populate: { product: true } },
+          delivery_address: true,
+          customer: true,
         },
-        populate: { delivery_address: true, customer: true },
       });
 
-      ctx.body = { data: order };
+      ctx.body = { data: fullOrder };
     } catch (error) {
       console.error('Guest order creation error:', error);
       ctx.throw(500, 'Failed to create guest order');

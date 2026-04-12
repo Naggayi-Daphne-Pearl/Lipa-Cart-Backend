@@ -174,6 +174,75 @@ export default factories.createCoreController('api::address.address', ({ strapi 
     return super.update(ctx);
   },
 
+  async setDefault(ctx) {
+    const user = ctx.state.user;
+    if (!user) {
+      return ctx.unauthorized('You must be logged in to set a default address');
+    }
+
+    const roleType = user.role?.type;
+    if (roleType !== 'customer' && roleType !== 'admin') {
+      return ctx.forbidden('Only customers can set a default address');
+    }
+
+    const existing = await findAddressRecord(strapi, ctx.params.id);
+    if (!existing) {
+      return ctx.notFound('Address not found');
+    }
+
+    // Determine whose defaults to flip. Customers only act on their own
+    // addresses; admins scope the transaction to the address's owning
+    // customer (admins don't have a customer profile themselves, so we
+    // can't and shouldn't call resolveCustomer for them).
+    let customerId: number | null = null;
+    if (roleType === 'admin') {
+      customerId = existing.customer?.id ?? null;
+      if (!customerId) {
+        return ctx.badRequest('Address is not linked to a customer');
+      }
+    } else {
+      const customer = await resolveCustomer(strapi, ctx);
+      if (!customer) {
+        return ctx.badRequest('No customer profile found for this user');
+      }
+      if (existing.customer?.id !== customer.id) {
+        return ctx.forbidden('You can only set your own address as default');
+      }
+      customerId = customer.id;
+    }
+
+    // Atomically flip the default flag: clear all of this customer's defaults
+    // and set the target one inside a single transaction so partial failures
+    // can't leave the customer with zero or two defaults.
+    try {
+      const ownedAddresses: any[] = await strapi.db.query('api::address.address').findMany({
+        where: { customer: customerId },
+        select: ['id'],
+      });
+      const otherIds = ownedAddresses.map((a) => a.id).filter((id) => id !== existing.id);
+
+      await strapi.db.connection.transaction(async (trx: any) => {
+        if (otherIds.length > 0) {
+          await trx('addresses')
+            .whereIn('id', otherIds)
+            .update({ is_default: false, updated_at: new Date().toISOString() });
+        }
+        await trx('addresses')
+          .where({ id: existing.id })
+          .update({ is_default: true, updated_at: new Date().toISOString() });
+      });
+    } catch (err: any) {
+      strapi.log.error(`[address] setDefault failed: ${err?.message}`);
+      return ctx.internalServerError('Failed to set default address');
+    }
+
+    const updated: any = await strapi.entityService.findOne('api::address.address', existing.id, {
+      populate: { customer: true },
+    });
+
+    return { data: updated };
+  },
+
   async delete(ctx) {
     const user = ctx.state.user;
     if (!user) {

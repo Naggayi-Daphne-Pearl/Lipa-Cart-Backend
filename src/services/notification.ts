@@ -303,7 +303,12 @@ async function saveNotificationIfNotDuplicate(
 async function runInBatches<T>(items: T[], batchSize: number, work: (item: T) => Promise<void>) {
   for (let i = 0; i < items.length; i += batchSize) {
     const chunk = items.slice(i, i + batchSize);
-    await Promise.all(chunk.map((item) => work(item)));
+    const results = await Promise.allSettled(chunk.map((item) => work(item)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error('[notifications] Batch work item failed:', result.reason);
+      }
+    }
   }
 }
 

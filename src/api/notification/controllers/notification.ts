@@ -16,6 +16,28 @@ function parseNotificationRef(ref: unknown): { id?: number; documentId?: string 
   return { documentId: value };
 }
 
+function normalizeTargetUserIds(userIds: unknown): number[] {
+  if (!Array.isArray(userIds)) return [];
+
+  return Array.from(
+    new Set(
+      userIds.map((id: any) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0),
+    ),
+  );
+}
+
+async function runBatched<T>(items: T[], batchSize: number, work: (item: T) => Promise<void>) {
+  for (let index = 0; index < items.length; index += batchSize) {
+    const chunk = items.slice(index, index + batchSize);
+    const results = await Promise.allSettled(chunk.map((item) => work(item)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        throw result.reason;
+      }
+    }
+  }
+}
+
 export default factories.createCoreController('api::notification.notification', ({ strapi }) => ({
   /**
    * Test push notification — sends a test push to the authenticated user.
@@ -217,11 +239,7 @@ export default factories.createCoreController('api::notification.notification', 
         return ctx.badRequest('title and body are required');
       }
 
-      const normalizedUserIds = Array.isArray(userIds)
-        ? userIds
-            .map((id: any) => Number(id))
-            .filter((id: number) => Number.isInteger(id) && id > 0)
-        : [];
+      const normalizedUserIds = normalizeTargetUserIds(userIds);
 
       const targetUserIds: number[] =
         normalizedUserIds.length > 0
@@ -233,17 +251,15 @@ export default factories.createCoreController('api::notification.notification', 
               })
             ).map((user: any) => user.id);
 
-      await Promise.all(
-        targetUserIds.map((userId) =>
-          notifyUserPromo(
-            strapi,
-            userId,
-            String(title),
-            String(body),
-            String(route || '/customer/home'),
-          ),
-        ),
-      );
+      await runBatched(targetUserIds, 25, async (userId) => {
+        await notifyUserPromo(
+          strapi,
+          userId,
+          String(title),
+          String(body),
+          String(route || '/customer/home'),
+        );
+      });
 
       ctx.body = { ok: true, deliveredTo: targetUserIds.length };
     } catch (error) {
@@ -266,11 +282,7 @@ export default factories.createCoreController('api::notification.notification', 
         return ctx.badRequest('title and body are required');
       }
 
-      const normalizedUserIds = Array.isArray(userIds)
-        ? userIds
-            .map((id: any) => Number(id))
-            .filter((id: number) => Number.isInteger(id) && id > 0)
-        : [];
+      const normalizedUserIds = normalizeTargetUserIds(userIds);
 
       const targetUserIds: number[] =
         normalizedUserIds.length > 0
@@ -282,17 +294,15 @@ export default factories.createCoreController('api::notification.notification', 
               })
             ).map((user: any) => user.id);
 
-      await Promise.all(
-        targetUserIds.map((userId) =>
-          notifySystemAlert(
-            strapi,
-            userId,
-            String(title),
-            String(body),
-            String(route || '/customer/home'),
-          ),
-        ),
-      );
+      await runBatched(targetUserIds, 25, async (userId) => {
+        await notifySystemAlert(
+          strapi,
+          userId,
+          String(title),
+          String(body),
+          String(route || '/customer/home'),
+        );
+      });
 
       ctx.body = { ok: true, deliveredTo: targetUserIds.length };
     } catch (error) {

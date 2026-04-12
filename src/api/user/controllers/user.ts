@@ -9,6 +9,20 @@ function normalizeTokenList(tokens: unknown): string[] {
     .map((token) => token.trim());
 }
 
+function getAllStoredTokens(customUser: any): string[] {
+  const tokens = normalizeTokenList(customUser?.fcm_tokens);
+  const legacyToken =
+    typeof customUser?.fcm_token === 'string' && customUser.fcm_token.trim().length > 0
+      ? customUser.fcm_token.trim()
+      : null;
+
+  if (legacyToken != null && !tokens.includes(legacyToken)) {
+    tokens.unshift(legacyToken);
+  }
+
+  return Array.from(new Set(tokens));
+}
+
 async function resolveAuthenticatedCustomUser(strapi: any, ctx: any): Promise<any | null> {
   const authHeader = ctx.request.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
@@ -91,7 +105,7 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
         return ctx.badRequest('fcm_token is required');
       }
 
-      const existingTokens = normalizeTokenList(customUser.fcm_tokens);
+      const existingTokens = getAllStoredTokens(customUser);
       const mergedTokens = [
         normalizedToken,
         ...existingTokens.filter((token) => token !== normalizedToken),
@@ -126,10 +140,14 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
       const customUser = await resolveAuthenticatedCustomUser(strapi, ctx);
       if (!customUser) return;
 
-      const providedToken =
-        typeof ctx.request.body?.fcm_token === 'string' ? ctx.request.body.fcm_token.trim() : null;
+      const rawToken = ctx.request.body?.fcm_token;
+      if (typeof rawToken === 'string' && rawToken.trim().length === 0) {
+        return ctx.badRequest('fcm_token cannot be blank');
+      }
 
-      const existingTokens = normalizeTokenList(customUser.fcm_tokens);
+      const providedToken = typeof rawToken === 'string' ? rawToken.trim() : null;
+
+      const existingTokens = getAllStoredTokens(customUser);
       const nextTokens = providedToken
         ? existingTokens.filter((token) => token !== providedToken)
         : [];

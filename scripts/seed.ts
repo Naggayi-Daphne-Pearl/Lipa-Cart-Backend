@@ -1115,6 +1115,18 @@ async function seed(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
   const shouldReplaceImages = process.env.SEED_REPLACE_IMAGES === 'true';
 
+  const [anyCategories, anyProducts, anyRecipes, anyShoppingLists] = await Promise.all([
+    strapi.documents('api::category.category').findMany({ limit: 1 }),
+    strapi.documents('api::product.product').findMany({ limit: 1 }),
+    strapi.documents('api::recipe.recipe').findMany({ limit: 1 }),
+    strapi.documents('api::shopping-list.shopping-list').findMany({ limit: 1 }),
+  ]);
+  const hasAnySeedData =
+    anyCategories.length > 0 ||
+    anyProducts.length > 0 ||
+    anyRecipes.length > 0 ||
+    anyShoppingLists.length > 0;
+
   // Check if data already exists and is complete — only count PUBLISHED entries
   // so a failed/partial seed that left unpublished duplicates doesn't cause a false skip.
   const existingCategories = await strapi
@@ -1123,57 +1135,6 @@ async function seed(strapi: Core.Strapi) {
   const existingProducts = await strapi
     .documents('api::product.product')
     .findMany({ limit: 100, status: 'published' });
-  // Fast pre-check: if counts already meet minimums and SEED_REPLACE_IMAGES is off,
-  // skip the expensive populate queries entirely.
-  const fastCheck =
-    !shouldReplaceImages &&
-    existingCategories.length >= categories.length &&
-    existingProducts.length >= products.length;
-
-  if (fastCheck) {
-    const [fastRecipes, fastLists, sampleCategory, sampleProduct, sampleRecipe] = await Promise.all(
-      [
-        strapi.documents('api::recipe.recipe').findMany({ limit: 1 }),
-        strapi.documents('api::shopping-list.shopping-list').findMany({ limit: 1 }),
-        strapi
-          .documents('api::category.category')
-          .findMany({ limit: 1, populate: { image: true } as any }),
-        strapi
-          .documents('api::product.product')
-          .findMany({ limit: 1, populate: { image: true } as any }),
-        strapi
-          .documents('api::recipe.recipe')
-          .findMany({ limit: 1, populate: { image: true } as any }),
-      ],
-    );
-
-    const fastImagesPopulated =
-      Boolean((sampleCategory[0] as any)?.image) &&
-      Boolean((sampleProduct[0] as any)?.image) &&
-      Boolean((sampleRecipe[0] as any)?.image);
-
-    if (fastRecipes.length > 0 && fastLists.length > 0) {
-      if (!fastImagesPopulated) {
-        console.log('🖼️  Seed data present but image fields are missing — running backfill...');
-        const recipesForBackfill = await strapi
-          .documents('api::recipe.recipe')
-          .findMany({ limit: 100 });
-        await backfillImageUrls(
-          strapi,
-          existingCategories as any[],
-          existingProducts as any[],
-          recipesForBackfill as any[],
-          false,
-        );
-        return;
-      }
-
-      console.log(
-        `⏭️  Seed data present (${existingCategories.length} cats, ${existingProducts.length} prods) — skipping full seed check.`,
-      );
-      return;
-    }
-  }
 
   // Full check with populate only when fast check is inconclusive
   const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({
@@ -1207,13 +1168,21 @@ async function seed(strapi: Core.Strapi) {
   // from the old upload-then-reference flow), backfill the URLs in place
   // without wiping data.
   if (isComplete) {
-    const sampleProduct = existingProducts[0] as any;
-    const sampleCategory = existingCategories[0] as any;
-    const sampleRecipe = existingRecipes[0] as any;
+    const [sampleCategory, sampleProduct, sampleRecipe] = await Promise.all([
+      strapi
+        .documents('api::category.category')
+        .findMany({ limit: 1, status: 'published', populate: { image: true } as any }),
+      strapi
+        .documents('api::product.product')
+        .findMany({ limit: 1, status: 'published', populate: { image: true } as any }),
+      strapi
+        .documents('api::recipe.recipe')
+        .findMany({ limit: 1, populate: { image: true } as any }),
+    ]);
     const imagesArePopulated =
-      Boolean(sampleProduct?.image) &&
-      Boolean(sampleCategory?.image) &&
-      Boolean(sampleRecipe?.image);
+      Boolean((sampleProduct[0] as any)?.image) &&
+      Boolean((sampleCategory[0] as any)?.image) &&
+      Boolean((sampleRecipe[0] as any)?.image);
 
     if (imagesArePopulated && !shouldReplaceImages) {
       console.log(
@@ -1240,7 +1209,7 @@ async function seed(strapi: Core.Strapi) {
   }
 
   // Incomplete or outdated — clear everything and re-seed
-  if (existingCategories.length > 0) {
+  if (hasAnySeedData) {
     console.log(
       `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts}) — clearing...`,
     );

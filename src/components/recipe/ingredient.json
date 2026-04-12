@@ -22,6 +22,10 @@
     },
     "notes": {
       "type": "string"
+    },
+    "is_optional": {
+      "type": "boolean",
+      "default": false
     }
   }
 }

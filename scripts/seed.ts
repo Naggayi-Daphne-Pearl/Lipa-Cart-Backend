@@ -14,17 +14,22 @@ async function uploadImage(strapi: Core.Strapi, url: string, name: string) {
     fs.writeFileSync(filePath, buffer);
 
     const stats = fs.statSync(filePath);
-    const uploadedFiles = await strapi.plugin('upload').service('upload').upload({
-      data: {},
-      files: {
-        filepath: filePath,
-        originalFilename: `${name}.jpg`,
-        mimetype: 'image/jpeg',
-        size: stats.size,
-      },
-    });
+    const uploadedFiles = await strapi
+      .plugin('upload')
+      .service('upload')
+      .upload({
+        data: {},
+        files: {
+          filepath: filePath,
+          originalFilename: `${name}.jpg`,
+          mimetype: 'image/jpeg',
+          size: stats.size,
+        },
+      });
 
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try {
+      fs.unlinkSync(filePath);
+    } catch (_) {}
     return uploadedFiles[0] ?? null;
   } catch (e) {
     console.log(`  ⚠️  Image upload failed for ${name}`);
@@ -92,8 +97,18 @@ const categories = [
 
 const subcategories = [
   { name: 'Fresh Fruits', slug: 'fresh-fruits', categorySlug: 'fruits-vegetables', sort_order: 1 },
-  { name: 'Fresh Vegetables', slug: 'fresh-vegetables', categorySlug: 'fruits-vegetables', sort_order: 2 },
-  { name: 'Herbs & Spices', slug: 'herbs-spices', categorySlug: 'fruits-vegetables', sort_order: 3 },
+  {
+    name: 'Fresh Vegetables',
+    slug: 'fresh-vegetables',
+    categorySlug: 'fruits-vegetables',
+    sort_order: 2,
+  },
+  {
+    name: 'Herbs & Spices',
+    slug: 'herbs-spices',
+    categorySlug: 'fruits-vegetables',
+    sort_order: 3,
+  },
   { name: 'Chicken', slug: 'chicken', categorySlug: 'meat-poultry', sort_order: 1 },
   { name: 'Beef', slug: 'beef', categorySlug: 'meat-poultry', sort_order: 2 },
   { name: 'Fish & Seafood', slug: 'fish-seafood', categorySlug: 'meat-poultry', sort_order: 3 },
@@ -106,44 +121,301 @@ const subcategories = [
 // ── Products (with descriptions and image URLs from frontend) ──
 const products = [
   // Fruits
-  { name: 'Bananas (Matooke)', slug: 'bananas-matooke', description: 'Fresh green bananas for cooking. The staple food of Uganda — steam and mash for the perfect matoke.', estimated_price: 5000, common_units: ['bunch', 'kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg' },
-  { name: 'Mangoes', slug: 'mangoes', description: 'Sweet, juicy mangoes sourced from local farms. Perfect for snacking or fresh juice.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/JjGQj85G/lipa-cart-12.jpg' },
-  { name: 'Pineapple', slug: 'pineapple', description: 'Ripe, sweet pineapple from Eastern Uganda. Great for juice, desserts, or eating fresh.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/N2pYBBJS/lipa-cart-11.jpg' },
-  { name: 'Watermelon', slug: 'watermelon', description: 'Large, refreshing watermelon. Perfect for hot days and fresh juice.', estimated_price: 8000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/xDFKZV0p/lipa-cart-25.jpg' },
-  { name: 'Passion Fruit', slug: 'passion-fruit', description: 'Tangy passion fruit for fresh juice or desserts. Rich in vitamins.', estimated_price: 500, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-fruits', imageUrl: 'https://i.ibb.co/VYL0gkZx/lipa-cart-35.jpg' },
+  {
+    name: 'Bananas (Matooke)',
+    slug: 'bananas-matooke',
+    description:
+      'Fresh green bananas for cooking. The staple food of Uganda — steam and mash for the perfect matoke.',
+    estimated_price: 5000,
+    common_units: ['bunch', 'kg', 'piece'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-fruits',
+    imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg',
+  },
+  {
+    name: 'Mangoes',
+    slug: 'mangoes',
+    description:
+      'Sweet, juicy mangoes sourced from local farms. Perfect for snacking or fresh juice.',
+    estimated_price: 2000,
+    common_units: ['piece', 'kg'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-fruits',
+    imageUrl: 'https://i.ibb.co/JjGQj85G/lipa-cart-12.jpg',
+  },
+  {
+    name: 'Pineapple',
+    slug: 'pineapple',
+    description:
+      'Ripe, sweet pineapple from Eastern Uganda. Great for juice, desserts, or eating fresh.',
+    estimated_price: 3000,
+    common_units: ['piece'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-fruits',
+    imageUrl: 'https://i.ibb.co/N2pYBBJS/lipa-cart-11.jpg',
+  },
+  {
+    name: 'Watermelon',
+    slug: 'watermelon',
+    description: 'Large, refreshing watermelon. Perfect for hot days and fresh juice.',
+    estimated_price: 8000,
+    common_units: ['piece', 'half'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-fruits',
+    imageUrl: 'https://i.ibb.co/xDFKZV0p/lipa-cart-25.jpg',
+  },
+  {
+    name: 'Passion Fruit',
+    slug: 'passion-fruit',
+    description: 'Tangy passion fruit for fresh juice or desserts. Rich in vitamins.',
+    estimated_price: 500,
+    common_units: ['piece', 'kg'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-fruits',
+    imageUrl: 'https://i.ibb.co/VYL0gkZx/lipa-cart-35.jpg',
+  },
   // Vegetables
-  { name: 'Tomatoes', slug: 'tomatoes', description: 'Ripe red tomatoes from local farms. Perfect for salads, cooking, and sauces.', estimated_price: 3000, common_units: ['kg', 'piece', 'tin'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/LDHxJmkN/lipa-cart-34.jpg' },
-  { name: 'Onions', slug: 'onions', description: 'Red onions perfect for cooking and salads. A kitchen essential.', estimated_price: 3500, common_units: ['kg', 'piece'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg' },
-  { name: 'Cabbage', slug: 'cabbage', description: 'Fresh green cabbage. Great for salads, stir-fry, or steaming.', estimated_price: 2000, common_units: ['piece', 'half'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/Mk3x6kHZ/lipa-cart-32.jpg' },
-  { name: 'Nakati (African Nightshade)', slug: 'nakati', description: 'Traditional Ugandan leafy green vegetable. Nutritious and delicious when steamed.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/BKqDb5pK/lipa-cart-32.jpg' },
-  { name: 'Sukuma Wiki (Collard Greens)', slug: 'sukuma-wiki', description: 'Popular East African leafy greens. A staple side dish in Kenya and Uganda.', estimated_price: 1000, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'fresh-vegetables', imageUrl: 'https://i.ibb.co/Czs9DpF7/lipa-cart-22.jpg' },
+  {
+    name: 'Tomatoes',
+    slug: 'tomatoes',
+    description: 'Ripe red tomatoes from local farms. Perfect for salads, cooking, and sauces.',
+    estimated_price: 3000,
+    common_units: ['kg', 'piece', 'tin'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-vegetables',
+    imageUrl: 'https://i.ibb.co/LDHxJmkN/lipa-cart-34.jpg',
+  },
+  {
+    name: 'Onions',
+    slug: 'onions',
+    description: 'Red onions perfect for cooking and salads. A kitchen essential.',
+    estimated_price: 3500,
+    common_units: ['kg', 'piece'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-vegetables',
+    imageUrl: 'https://i.ibb.co/7NBFDhb9/lipa-cart-36.jpg',
+  },
+  {
+    name: 'Cabbage',
+    slug: 'cabbage',
+    description: 'Fresh green cabbage. Great for salads, stir-fry, or steaming.',
+    estimated_price: 2000,
+    common_units: ['piece', 'half'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-vegetables',
+    imageUrl: 'https://i.ibb.co/Mk3x6kHZ/lipa-cart-32.jpg',
+  },
+  {
+    name: 'Nakati (African Nightshade)',
+    slug: 'nakati',
+    description:
+      'Traditional Ugandan leafy green vegetable. Nutritious and delicious when steamed.',
+    estimated_price: 1000,
+    common_units: ['bunch'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-vegetables',
+    imageUrl: 'https://i.ibb.co/BKqDb5pK/lipa-cart-32.jpg',
+  },
+  {
+    name: 'Sukuma Wiki (Collard Greens)',
+    slug: 'sukuma-wiki',
+    description: 'Popular East African leafy greens. A staple side dish in Kenya and Uganda.',
+    estimated_price: 1000,
+    common_units: ['bunch'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'fresh-vegetables',
+    imageUrl: 'https://i.ibb.co/Czs9DpF7/lipa-cart-22.jpg',
+  },
   // Herbs
-  { name: 'Coriander (Dania)', slug: 'coriander', description: 'Fresh coriander leaves for garnishing and flavouring. Essential for East African cooking.', estimated_price: 500, common_units: ['bunch'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://i.ibb.co/0V5gYdJk/lipa-cart-34.jpg' },
-  { name: 'Ginger', slug: 'ginger', description: 'Fresh ginger root for tea, cooking, and natural remedies.', estimated_price: 2000, common_units: ['piece', 'kg'], categorySlug: 'fruits-vegetables', subcategorySlug: 'herbs-spices', imageUrl: 'https://i.ibb.co/hBWYJQhP/lipa-cart-31.jpg' },
+  {
+    name: 'Coriander (Dania)',
+    slug: 'coriander',
+    description:
+      'Fresh coriander leaves for garnishing and flavouring. Essential for East African cooking.',
+    estimated_price: 500,
+    common_units: ['bunch'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'herbs-spices',
+    imageUrl: 'https://i.ibb.co/0V5gYdJk/lipa-cart-34.jpg',
+  },
+  {
+    name: 'Ginger',
+    slug: 'ginger',
+    description: 'Fresh ginger root for tea, cooking, and natural remedies.',
+    estimated_price: 2000,
+    common_units: ['piece', 'kg'],
+    categorySlug: 'fruits-vegetables',
+    subcategorySlug: 'herbs-spices',
+    imageUrl: 'https://i.ibb.co/hBWYJQhP/lipa-cart-31.jpg',
+  },
   // Chicken
-  { name: 'Whole Chicken', slug: 'whole-chicken', description: 'Fresh whole chicken, locally raised. Perfect for roasting or stewing.', estimated_price: 18000, common_units: ['piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://i.ibb.co/hFNPP18g/lipa-cart-18.jpg' },
-  { name: 'Chicken Breast', slug: 'chicken-breast', description: 'Boneless chicken breast. Lean, versatile, and great for grilling or stir-fry.', estimated_price: 12000, common_units: ['kg', 'piece'], categorySlug: 'meat-poultry', subcategorySlug: 'chicken', imageUrl: 'https://i.ibb.co/0YkZGZW3/lipa-cart-17.jpg' },
+  {
+    name: 'Whole Chicken',
+    slug: 'whole-chicken',
+    description: 'Fresh whole chicken, locally raised. Perfect for roasting or stewing.',
+    estimated_price: 18000,
+    common_units: ['piece'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'chicken',
+    imageUrl: 'https://i.ibb.co/hFNPP18g/lipa-cart-18.jpg',
+  },
+  {
+    name: 'Chicken Breast',
+    slug: 'chicken-breast',
+    description: 'Boneless chicken breast. Lean, versatile, and great for grilling or stir-fry.',
+    estimated_price: 12000,
+    common_units: ['kg', 'piece'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'chicken',
+    imageUrl: 'https://i.ibb.co/0YkZGZW3/lipa-cart-17.jpg',
+  },
   // Beef
-  { name: 'Beef Stew Meat', slug: 'beef-stew-meat', description: 'Tender beef chunks ideal for slow-cooked stews and curries.', estimated_price: 15000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg' },
-  { name: 'Minced Beef', slug: 'minced-beef', description: 'Freshly minced beef. Perfect for samosas, bolognese, or chapati fillings.', estimated_price: 16000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'beef', imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg' },
+  {
+    name: 'Beef Stew Meat',
+    slug: 'beef-stew-meat',
+    description: 'Tender beef chunks ideal for slow-cooked stews and curries.',
+    estimated_price: 15000,
+    common_units: ['kg'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'beef',
+    imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg',
+  },
+  {
+    name: 'Minced Beef',
+    slug: 'minced-beef',
+    description: 'Freshly minced beef. Perfect for samosas, bolognese, or chapati fillings.',
+    estimated_price: 16000,
+    common_units: ['kg'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'beef',
+    imageUrl: 'https://i.ibb.co/MVd4JqmJ/lipa-cart-19.jpg',
+  },
   // Fish
-  { name: 'Tilapia', slug: 'tilapia', description: 'Freshly caught tilapia from Lake Victoria. Perfect for grilling or frying.', estimated_price: 12000, common_units: ['piece', 'kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://i.ibb.co/mF475pq7/lipa-cart-4.jpg' },
-  { name: 'Nile Perch', slug: 'nile-perch', description: 'Premium Nile Perch fillet from Lake Victoria. A Ugandan delicacy.', estimated_price: 18000, common_units: ['kg'], categorySlug: 'meat-poultry', subcategorySlug: 'fish-seafood', imageUrl: 'https://i.ibb.co/1fkpD3mJ/lipa-cart-5.jpg' },
+  {
+    name: 'Tilapia',
+    slug: 'tilapia',
+    description: 'Freshly caught tilapia from Lake Victoria. Perfect for grilling or frying.',
+    estimated_price: 12000,
+    common_units: ['piece', 'kg'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'fish-seafood',
+    imageUrl: 'https://i.ibb.co/mF475pq7/lipa-cart-4.jpg',
+  },
+  {
+    name: 'Nile Perch',
+    slug: 'nile-perch',
+    description: 'Premium Nile Perch fillet from Lake Victoria. A Ugandan delicacy.',
+    estimated_price: 18000,
+    common_units: ['kg'],
+    categorySlug: 'meat-poultry',
+    subcategorySlug: 'fish-seafood',
+    imageUrl: 'https://i.ibb.co/1fkpD3mJ/lipa-cart-5.jpg',
+  },
   // Dairy
-  { name: 'Fresh Milk (1L)', slug: 'fresh-milk-1l', description: 'Pasteurized fresh milk from local dairy farms.', estimated_price: 3500, common_units: ['litre', 'packet'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://i.ibb.co/PZB6D3zc/lipa-cart-13.jpg' },
-  { name: 'Yogurt (500ml)', slug: 'yogurt-500ml', description: 'Creamy natural yogurt. Great for breakfast or as a snack.', estimated_price: 3000, common_units: ['piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'milk-yogurt', imageUrl: 'https://i.ibb.co/1GBStBX3/lipa-cart-2.jpg' },
+  {
+    name: 'Fresh Milk (1L)',
+    slug: 'fresh-milk-1l',
+    description: 'Pasteurized fresh milk from local dairy farms.',
+    estimated_price: 3500,
+    common_units: ['litre', 'packet'],
+    categorySlug: 'dairy-eggs',
+    subcategorySlug: 'milk-yogurt',
+    imageUrl: 'https://i.ibb.co/PZB6D3zc/lipa-cart-13.jpg',
+  },
+  {
+    name: 'Yogurt (500ml)',
+    slug: 'yogurt-500ml',
+    description: 'Creamy natural yogurt. Great for breakfast or as a snack.',
+    estimated_price: 3000,
+    common_units: ['piece'],
+    categorySlug: 'dairy-eggs',
+    subcategorySlug: 'milk-yogurt',
+    imageUrl: 'https://i.ibb.co/1GBStBX3/lipa-cart-2.jpg',
+  },
   // Eggs
-  { name: 'Eggs (Tray of 30)', slug: 'eggs-tray-30', description: 'Fresh eggs from free-range chickens. A kitchen essential.', estimated_price: 12000, common_units: ['tray', 'piece'], categorySlug: 'dairy-eggs', subcategorySlug: 'eggs', imageUrl: 'https://i.ibb.co/cbBMFLLN/lipa-cart-26.jpg' },
+  {
+    name: 'Eggs (Tray of 30)',
+    slug: 'eggs-tray-30',
+    description: 'Fresh eggs from free-range chickens. A kitchen essential.',
+    estimated_price: 12000,
+    common_units: ['tray', 'piece'],
+    categorySlug: 'dairy-eggs',
+    subcategorySlug: 'eggs',
+    imageUrl: 'https://i.ibb.co/cbBMFLLN/lipa-cart-26.jpg',
+  },
   // Grains
-  { name: 'Rice (1kg)', slug: 'rice-1kg', description: 'High-quality long grain rice for everyday meals.', estimated_price: 5000, common_units: ['kg'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://i.ibb.co/P8gqkPHP/lipa-cart-27.jpg' },
-  { name: 'Maize Flour (Posho) 2kg', slug: 'maize-flour-2kg', description: 'Fine maize flour for making posho/ugali. A staple across East Africa.', estimated_price: 4000, common_units: ['kg', 'packet'], categorySlug: 'grains-cereals', subcategorySlug: 'rice-maize', imageUrl: 'https://i.ibb.co/7kCPjpZj/lipa-cart-28.jpg' },
-  { name: 'Bread (Loaf)', slug: 'bread-loaf', description: 'Freshly baked white bread loaf. Perfect for breakfast or sandwiches.', estimated_price: 5000, common_units: ['loaf'], categorySlug: 'grains-cereals', subcategorySlug: 'bread-bakery', imageUrl: 'https://i.ibb.co/Cs2SFS3r/lipa-cart-3.jpg' },
+  {
+    name: 'Rice (1kg)',
+    slug: 'rice-1kg',
+    description: 'High-quality long grain rice for everyday meals.',
+    estimated_price: 5000,
+    common_units: ['kg'],
+    categorySlug: 'grains-cereals',
+    subcategorySlug: 'rice-maize',
+    imageUrl: 'https://i.ibb.co/P8gqkPHP/lipa-cart-27.jpg',
+  },
+  {
+    name: 'Maize Flour (Posho) 2kg',
+    slug: 'maize-flour-2kg',
+    description: 'Fine maize flour for making posho/ugali. A staple across East Africa.',
+    estimated_price: 4000,
+    common_units: ['kg', 'packet'],
+    categorySlug: 'grains-cereals',
+    subcategorySlug: 'rice-maize',
+    imageUrl: 'https://i.ibb.co/7kCPjpZj/lipa-cart-28.jpg',
+  },
+  {
+    name: 'Bread (Loaf)',
+    slug: 'bread-loaf',
+    description: 'Freshly baked white bread loaf. Perfect for breakfast or sandwiches.',
+    estimated_price: 5000,
+    common_units: ['loaf'],
+    categorySlug: 'grains-cereals',
+    subcategorySlug: 'bread-bakery',
+    imageUrl: 'https://i.ibb.co/Cs2SFS3r/lipa-cart-3.jpg',
+  },
   // Beverages
-  { name: 'Mineral Water (1.5L)', slug: 'mineral-water-1-5l', description: 'Pure mineral water. Stay hydrated throughout the day.', estimated_price: 1500, common_units: ['bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/kgFgkdTQ/lipa-cart-10.jpg' },
-  { name: 'Orange Juice (1L)', slug: 'orange-juice-1l', description: 'Fresh orange juice packed with vitamin C. No added sugars.', estimated_price: 5000, common_units: ['packet', 'bottle'], categorySlug: 'beverages', subcategorySlug: null, imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg' },
+  {
+    name: 'Mineral Water (1.5L)',
+    slug: 'mineral-water-1-5l',
+    description: 'Pure mineral water. Stay hydrated throughout the day.',
+    estimated_price: 1500,
+    common_units: ['bottle'],
+    categorySlug: 'beverages',
+    subcategorySlug: null,
+    imageUrl: 'https://i.ibb.co/kgFgkdTQ/lipa-cart-10.jpg',
+  },
+  {
+    name: 'Orange Juice (1L)',
+    slug: 'orange-juice-1l',
+    description: 'Fresh orange juice packed with vitamin C. No added sugars.',
+    estimated_price: 5000,
+    common_units: ['packet', 'bottle'],
+    categorySlug: 'beverages',
+    subcategorySlug: null,
+    imageUrl: 'https://i.ibb.co/RpFbr2CM/lipa-cart-37.jpg',
+  },
   // Household
-  { name: 'Washing Soap (Bar)', slug: 'washing-soap-bar', description: 'Multipurpose washing soap bar for laundry and cleaning.', estimated_price: 2000, common_units: ['piece'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://i.ibb.co/NgVJjpTR/lipa-cart-31.jpg' },
-  { name: 'Cooking Oil (1L)', slug: 'cooking-oil-1l', description: 'Vegetable cooking oil for everyday frying and cooking.', estimated_price: 8000, common_units: ['litre', 'bottle'], categorySlug: 'household-cleaning', subcategorySlug: null, imageUrl: 'https://i.ibb.co/yn18Z6jj/lipa-cart-30.jpg' },
+  {
+    name: 'Washing Soap (Bar)',
+    slug: 'washing-soap-bar',
+    description: 'Multipurpose washing soap bar for laundry and cleaning.',
+    estimated_price: 2000,
+    common_units: ['piece'],
+    categorySlug: 'household-cleaning',
+    subcategorySlug: null,
+    imageUrl: 'https://i.ibb.co/NgVJjpTR/lipa-cart-31.jpg',
+  },
+  {
+    name: 'Cooking Oil (1L)',
+    slug: 'cooking-oil-1l',
+    description: 'Vegetable cooking oil for everyday frying and cooking.',
+    estimated_price: 8000,
+    common_units: ['litre', 'bottle'],
+    categorySlug: 'household-cleaning',
+    subcategorySlug: null,
+    imageUrl: 'https://i.ibb.co/yn18Z6jj/lipa-cart-30.jpg',
+  },
 ];
 
 // ── Recipes (Ugandan + East African + international) ──
@@ -151,11 +423,15 @@ const recipes = [
   {
     name: 'Luwombo (Steamed Chicken Stew)',
     slug: 'luwombo-steamed-chicken-stew',
-    description: '**Luwombo** is a traditional Ugandan dish where chicken is steamed in banana leaves with groundnut sauce. It\'s a ceremonial favourite often served at special occasions.\n\n## Background\nOriginating from the Buganda Kingdom, Luwombo is considered a dish of honour.',
+    description:
+      "**Luwombo** is a traditional Ugandan dish where chicken is steamed in banana leaves with groundnut sauce. It's a ceremonial favourite often served at special occasions.\n\n## Background\nOriginating from the Buganda Kingdom, Luwombo is considered a dish of honour.",
     author_name: 'Chef Aisha',
-    prep_time: 30, cook_time: 90, servings: 6,
+    prep_time: 30,
+    cook_time: 90,
+    servings: 6,
     difficulty: 'medium' as const,
-    rating: 4.8, review_count: 42,
+    rating: 4.8,
+    review_count: 42,
     tags: ['Traditional', 'Ugandan', 'Special Occasion'],
     imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
     ingredients: [
@@ -167,21 +443,47 @@ const recipes = [
       { name: 'Salt', quantity: 1, unit: 'tsp', notes: null },
     ],
     instructions: [
-      { step_number: 1, description: 'Mix groundnut paste with a little water to form a smooth sauce.', duration_minutes: 5 },
-      { step_number: 2, description: 'Season chicken pieces with salt and set aside.', duration_minutes: 5 },
-      { step_number: 3, description: 'Soften banana leaves over an open flame until pliable.', duration_minutes: 10 },
-      { step_number: 4, description: 'Place chicken, tomatoes, onions, and groundnut sauce onto banana leaves. Wrap tightly into parcels.', duration_minutes: 10 },
-      { step_number: 5, description: 'Place parcels in a large pot with a little water at the bottom. Steam on low heat until chicken is tender.', duration_minutes: 90 },
+      {
+        step_number: 1,
+        description: 'Mix groundnut paste with a little water to form a smooth sauce.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 2,
+        description: 'Season chicken pieces with salt and set aside.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 3,
+        description: 'Soften banana leaves over an open flame until pliable.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 4,
+        description:
+          'Place chicken, tomatoes, onions, and groundnut sauce onto banana leaves. Wrap tightly into parcels.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 5,
+        description:
+          'Place parcels in a large pot with a little water at the bottom. Steam on low heat until chicken is tender.',
+        duration_minutes: 90,
+      },
     ],
   },
   {
     name: 'Rolex (Rolled Eggs)',
     slug: 'rolex-rolled-eggs',
-    description: '**Rolex** is Uganda\'s beloved street food — a chapati rolled around a fried egg omelette with vegetables. The name comes from "rolled eggs". Quick, cheap, and delicious.',
+    description:
+      '**Rolex** is Uganda\'s beloved street food — a chapati rolled around a fried egg omelette with vegetables. The name comes from "rolled eggs". Quick, cheap, and delicious.',
     author_name: 'Street Food Joe',
-    prep_time: 5, cook_time: 10, servings: 1,
+    prep_time: 5,
+    cook_time: 10,
+    servings: 1,
     difficulty: 'easy' as const,
-    rating: 4.9, review_count: 128,
+    rating: 4.9,
+    review_count: 128,
     tags: ['Quick', 'Street Food', 'Ugandan', 'Budget'],
     imageUrl: 'https://i.ibb.co/n8BRfYH5/lipa-cart-8.jpg',
     ingredients: [
@@ -193,20 +495,41 @@ const recipes = [
       { name: 'Cooking Oil', quantity: 2, unit: 'tbsp', notes: null },
     ],
     instructions: [
-      { step_number: 1, description: 'Beat eggs and mix with diced tomatoes, onions, and cabbage. Season with salt.', duration_minutes: 3 },
-      { step_number: 2, description: 'Heat oil in a pan and pour in the egg mixture. Cook as a flat omelette.', duration_minutes: 3 },
-      { step_number: 3, description: 'Warm the chapati on the pan for 30 seconds each side.', duration_minutes: 1 },
-      { step_number: 4, description: 'Place the omelette on the chapati and roll tightly. Serve immediately.', duration_minutes: 1 },
+      {
+        step_number: 1,
+        description:
+          'Beat eggs and mix with diced tomatoes, onions, and cabbage. Season with salt.',
+        duration_minutes: 3,
+      },
+      {
+        step_number: 2,
+        description: 'Heat oil in a pan and pour in the egg mixture. Cook as a flat omelette.',
+        duration_minutes: 3,
+      },
+      {
+        step_number: 3,
+        description: 'Warm the chapati on the pan for 30 seconds each side.',
+        duration_minutes: 1,
+      },
+      {
+        step_number: 4,
+        description: 'Place the omelette on the chapati and roll tightly. Serve immediately.',
+        duration_minutes: 1,
+      },
     ],
   },
   {
     name: 'Matoke (Steamed Green Bananas)',
     slug: 'matoke-steamed-green-bananas',
-    description: '**Matoke** is the staple dish of Uganda — green bananas steamed and mashed, often served with a meat or groundnut sauce. Every Ugandan home has their own version.',
+    description:
+      '**Matoke** is the staple dish of Uganda — green bananas steamed and mashed, often served with a meat or groundnut sauce. Every Ugandan home has their own version.',
     author_name: 'Mama Grace',
-    prep_time: 15, cook_time: 45, servings: 4,
+    prep_time: 15,
+    cook_time: 45,
+    servings: 4,
     difficulty: 'easy' as const,
-    rating: 4.6, review_count: 67,
+    rating: 4.6,
+    review_count: 67,
     tags: ['Traditional', 'Ugandan', 'Staple', 'Vegetarian'],
     imageUrl: 'https://i.ibb.co/qF12DMYq/lipa-cart-29.jpg',
     ingredients: [
@@ -218,20 +541,42 @@ const recipes = [
       { name: 'Water', quantity: 500, unit: 'ml', notes: null },
     ],
     instructions: [
-      { step_number: 1, description: 'Peel the green bananas and place in a pot lined with banana leaves or a steamer.', duration_minutes: 10 },
-      { step_number: 2, description: 'Sauté onions in oil until golden, add tomatoes and cook until soft to make the sauce.', duration_minutes: 10 },
-      { step_number: 3, description: 'Pour sauce over bananas, add water, cover tightly and steam on low heat.', duration_minutes: 40 },
-      { step_number: 4, description: 'Mash the bananas in the pot until smooth. Serve hot.', duration_minutes: 5 },
+      {
+        step_number: 1,
+        description:
+          'Peel the green bananas and place in a pot lined with banana leaves or a steamer.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 2,
+        description:
+          'Sauté onions in oil until golden, add tomatoes and cook until soft to make the sauce.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 3,
+        description: 'Pour sauce over bananas, add water, cover tightly and steam on low heat.',
+        duration_minutes: 40,
+      },
+      {
+        step_number: 4,
+        description: 'Mash the bananas in the pot until smooth. Serve hot.',
+        duration_minutes: 5,
+      },
     ],
   },
   {
     name: 'Chapati',
     slug: 'chapati',
-    description: 'Soft, layered flatbread perfect for scooping up stews and curries. A staple across East Africa, served with everything from beans to Luwombo.',
+    description:
+      'Soft, layered flatbread perfect for scooping up stews and curries. A staple across East Africa, served with everything from beans to Luwombo.',
     author_name: 'Mama Njeri',
-    prep_time: 40, cook_time: 30, servings: 8,
+    prep_time: 40,
+    cook_time: 30,
+    servings: 8,
     difficulty: 'medium' as const,
-    rating: 4.6, review_count: 198,
+    rating: 4.6,
+    review_count: 198,
     tags: ['East African', 'Bread', 'Traditional', 'Vegetarian'],
     imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
     ingredients: [
@@ -243,22 +588,38 @@ const recipes = [
     instructions: [
       { step_number: 1, description: 'Mix flour and salt in a large bowl.', duration_minutes: 2 },
       { step_number: 2, description: 'Add oil and mix until crumbly.', duration_minutes: 3 },
-      { step_number: 3, description: 'Gradually add warm water and knead into soft dough.', duration_minutes: 5 },
+      {
+        step_number: 3,
+        description: 'Gradually add warm water and knead into soft dough.',
+        duration_minutes: 5,
+      },
       { step_number: 4, description: 'Cover and rest for 30 minutes.', duration_minutes: 30 },
-      { step_number: 5, description: 'Divide into 8 balls and roll each into a thin circle.', duration_minutes: 5 },
+      {
+        step_number: 5,
+        description: 'Divide into 8 balls and roll each into a thin circle.',
+        duration_minutes: 5,
+      },
       { step_number: 6, description: 'Brush with oil, fold, and roll again.', duration_minutes: 5 },
-      { step_number: 7, description: 'Cook on hot pan, turning and brushing with oil until golden.', duration_minutes: 15 },
+      {
+        step_number: 7,
+        description: 'Cook on hot pan, turning and brushing with oil until golden.',
+        duration_minutes: 15,
+      },
       { step_number: 8, description: 'Stack and cover to keep warm.', duration_minutes: 1 },
     ],
   },
   {
     name: 'Pilau',
     slug: 'pilau',
-    description: 'Aromatic Swahili spiced rice dish with tender meat. A coastal East African favourite with rich flavors from pilau masala spice blend.',
+    description:
+      'Aromatic Swahili spiced rice dish with tender meat. A coastal East African favourite with rich flavors from pilau masala spice blend.',
     author_name: 'Mama Fatuma',
-    prep_time: 20, cook_time: 50, servings: 8,
+    prep_time: 20,
+    cook_time: 50,
+    servings: 8,
     difficulty: 'medium' as const,
-    rating: 4.8, review_count: 189,
+    rating: 4.8,
+    review_count: 189,
     tags: ['East African', 'Rice', 'Swahili', 'One-Pot'],
     imageUrl: 'https://i.ibb.co/JVsVsWHz/lipa-cart-15.jpg',
     ingredients: [
@@ -270,24 +631,56 @@ const recipes = [
       { name: 'Potatoes', quantity: 2, unit: 'piece', notes: 'cubed (optional)' },
     ],
     instructions: [
-      { step_number: 1, description: 'Wash rice and soak in water for 30 minutes, then drain.', duration_minutes: 30 },
-      { step_number: 2, description: 'In a heavy pot, heat oil and fry sliced onions until deep brown.', duration_minutes: 10 },
-      { step_number: 3, description: 'Add beef pieces and brown on all sides.', duration_minutes: 5 },
-      { step_number: 4, description: 'Add garlic, ginger, and pilau masala. Stir for 2 minutes.', duration_minutes: 2 },
-      { step_number: 5, description: 'Pour in water (double the amount of rice) and bring to boil.', duration_minutes: 5 },
-      { step_number: 6, description: 'Add potatoes if using, then add the soaked rice.', duration_minutes: 2 },
-      { step_number: 7, description: 'Reduce heat to low, cover tightly, and cook for 25 minutes.', duration_minutes: 25 },
+      {
+        step_number: 1,
+        description: 'Wash rice and soak in water for 30 minutes, then drain.',
+        duration_minutes: 30,
+      },
+      {
+        step_number: 2,
+        description: 'In a heavy pot, heat oil and fry sliced onions until deep brown.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 3,
+        description: 'Add beef pieces and brown on all sides.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 4,
+        description: 'Add garlic, ginger, and pilau masala. Stir for 2 minutes.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 5,
+        description: 'Pour in water (double the amount of rice) and bring to boil.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 6,
+        description: 'Add potatoes if using, then add the soaked rice.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 7,
+        description: 'Reduce heat to low, cover tightly, and cook for 25 minutes.',
+        duration_minutes: 25,
+      },
       { step_number: 8, description: 'Fluff with fork and serve hot.', duration_minutes: 1 },
     ],
   },
   {
     name: 'Posho & Beans',
     slug: 'posho-and-beans',
-    description: 'The everyday Ugandan meal — maize flour porridge served with stewed beans. Affordable, filling, and packed with protein. Found at every roadside restaurant.',
+    description:
+      'The everyday Ugandan meal — maize flour porridge served with stewed beans. Affordable, filling, and packed with protein. Found at every roadside restaurant.',
     author_name: 'Chef Kamau',
-    prep_time: 10, cook_time: 25, servings: 4,
+    prep_time: 10,
+    cook_time: 25,
+    servings: 4,
     difficulty: 'easy' as const,
-    rating: 4.7, review_count: 312,
+    rating: 4.7,
+    review_count: 312,
     tags: ['Ugandan', 'Vegetarian', 'Traditional', 'Quick', 'Budget'],
     imageUrl: 'https://i.ibb.co/9mbJrKb5/lipa-cart-33.jpg',
     ingredients: [
@@ -300,22 +693,46 @@ const recipes = [
     ],
     instructions: [
       { step_number: 1, description: 'Boil 3 cups of water in a heavy pot.', duration_minutes: 5 },
-      { step_number: 2, description: 'Gradually add maize flour while stirring continuously with a wooden spoon.', duration_minutes: 5 },
-      { step_number: 3, description: 'Keep stirring until mixture thickens and pulls away from pot sides.', duration_minutes: 10 },
-      { step_number: 4, description: 'For beans: heat oil and sauté onions until translucent.', duration_minutes: 3 },
-      { step_number: 5, description: 'Add diced tomatoes and cook for 3 minutes.', duration_minutes: 3 },
-      { step_number: 6, description: 'Add cooked beans and simmer for 10 minutes. Season with salt.', duration_minutes: 10 },
+      {
+        step_number: 2,
+        description: 'Gradually add maize flour while stirring continuously with a wooden spoon.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 3,
+        description: 'Keep stirring until mixture thickens and pulls away from pot sides.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 4,
+        description: 'For beans: heat oil and sauté onions until translucent.',
+        duration_minutes: 3,
+      },
+      {
+        step_number: 5,
+        description: 'Add diced tomatoes and cook for 3 minutes.',
+        duration_minutes: 3,
+      },
+      {
+        step_number: 6,
+        description: 'Add cooked beans and simmer for 10 minutes. Season with salt.',
+        duration_minutes: 10,
+      },
       { step_number: 7, description: 'Serve posho alongside the beans stew.', duration_minutes: 1 },
     ],
   },
   {
     name: 'Chicken Tikka Masala',
     slug: 'chicken-tikka-masala',
-    description: 'Creamy, spiced tomato-based curry with tender chicken pieces. Popular in Kampala restaurants and a family favourite for special dinners.',
+    description:
+      'Creamy, spiced tomato-based curry with tender chicken pieces. Popular in Kampala restaurants and a family favourite for special dinners.',
     author_name: 'Chef Patel',
-    prep_time: 25, cook_time: 35, servings: 4,
+    prep_time: 25,
+    cook_time: 35,
+    servings: 4,
     difficulty: 'medium' as const,
-    rating: 4.8, review_count: 276,
+    rating: 4.8,
+    review_count: 276,
     tags: ['Indian', 'Curry', 'Chicken', 'Creamy'],
     imageUrl: 'https://i.ibb.co/gb4syh5p/lipa-cart-14.jpg',
     ingredients: [
@@ -327,22 +744,50 @@ const recipes = [
       { name: 'Ginger', quantity: 1, unit: 'piece', notes: 'grated' },
     ],
     instructions: [
-      { step_number: 1, description: 'Marinate chicken in yogurt and spices for at least 2 hours.', duration_minutes: 120 },
-      { step_number: 2, description: 'Grill or pan-fry chicken until cooked through. Set aside.', duration_minutes: 10 },
-      { step_number: 3, description: 'Sauté onions until golden, add garlic and ginger.', duration_minutes: 5 },
-      { step_number: 4, description: 'Add tomato puree and cook for 10 minutes.', duration_minutes: 10 },
-      { step_number: 5, description: 'Add chicken pieces and heat through for 5 minutes.', duration_minutes: 5 },
-      { step_number: 6, description: 'Garnish with fresh coriander and serve with chapati or rice.', duration_minutes: 1 },
+      {
+        step_number: 1,
+        description: 'Marinate chicken in yogurt and spices for at least 2 hours.',
+        duration_minutes: 120,
+      },
+      {
+        step_number: 2,
+        description: 'Grill or pan-fry chicken until cooked through. Set aside.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 3,
+        description: 'Sauté onions until golden, add garlic and ginger.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 4,
+        description: 'Add tomato puree and cook for 10 minutes.',
+        duration_minutes: 10,
+      },
+      {
+        step_number: 5,
+        description: 'Add chicken pieces and heat through for 5 minutes.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 6,
+        description: 'Garnish with fresh coriander and serve with chapati or rice.',
+        duration_minutes: 1,
+      },
     ],
   },
   {
     name: 'Avocado Toast',
     slug: 'avocado-toast',
-    description: 'Simple, nutritious breakfast with creamy avocado on crusty bread. Uganda grows some of the best avocados — this is the easiest way to enjoy them.',
+    description:
+      'Simple, nutritious breakfast with creamy avocado on crusty bread. Uganda grows some of the best avocados — this is the easiest way to enjoy them.',
     author_name: 'Chef Sarah',
-    prep_time: 5, cook_time: 5, servings: 2,
+    prep_time: 5,
+    cook_time: 5,
+    servings: 2,
     difficulty: 'easy' as const,
-    rating: 4.5, review_count: 156,
+    rating: 4.5,
+    review_count: 156,
     tags: ['Breakfast', 'Quick', 'Healthy', 'Vegetarian'],
     imageUrl: 'https://i.ibb.co/n8r3DtbQ/lipa-cart-28.jpg',
     ingredients: [
@@ -352,22 +797,42 @@ const recipes = [
       { name: 'Tomatoes', quantity: 2, unit: 'piece', notes: 'sliced (optional)' },
     ],
     instructions: [
-      { step_number: 1, description: 'Toast bread slices until golden and crispy.', duration_minutes: 2 },
-      { step_number: 2, description: 'Cut avocados in half and remove the pit.', duration_minutes: 1 },
+      {
+        step_number: 1,
+        description: 'Toast bread slices until golden and crispy.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 2,
+        description: 'Cut avocados in half and remove the pit.',
+        duration_minutes: 1,
+      },
       { step_number: 3, description: 'Scoop out flesh and mash with a fork.', duration_minutes: 1 },
-      { step_number: 4, description: 'Season with salt, pepper, and a squeeze of lemon.', duration_minutes: 1 },
+      {
+        step_number: 4,
+        description: 'Season with salt, pepper, and a squeeze of lemon.',
+        duration_minutes: 1,
+      },
       { step_number: 5, description: 'Spread mashed avocado on toast.', duration_minutes: 1 },
-      { step_number: 6, description: 'Top with poached egg and tomato slices if desired. Serve immediately.', duration_minutes: 1 },
+      {
+        step_number: 6,
+        description: 'Top with poached egg and tomato slices if desired. Serve immediately.',
+        duration_minutes: 1,
+      },
     ],
   },
   {
     name: 'Fruit Smoothie Bowl',
     slug: 'fruit-smoothie-bowl',
-    description: 'Refreshing blend of tropical fruits topped with granola and fresh fruits. Perfect Kampala morning breakfast using local bananas and passion fruit.',
+    description:
+      'Refreshing blend of tropical fruits topped with granola and fresh fruits. Perfect Kampala morning breakfast using local bananas and passion fruit.',
     author_name: 'Chef Lisa',
-    prep_time: 10, cook_time: 0, servings: 2,
+    prep_time: 10,
+    cook_time: 0,
+    servings: 2,
     difficulty: 'easy' as const,
-    rating: 4.7, review_count: 142,
+    rating: 4.7,
+    review_count: 142,
     tags: ['Breakfast', 'Healthy', 'Quick', 'Vegetarian'],
     imageUrl: 'https://i.ibb.co/qMwPWDjw/lipa-cart-27.jpg',
     ingredients: [
@@ -378,21 +843,37 @@ const recipes = [
       { name: 'Mangoes', quantity: 1, unit: 'piece', notes: 'sliced for topping' },
     ],
     instructions: [
-      { step_number: 1, description: 'Add frozen bananas and passion fruit pulp to a blender.', duration_minutes: 2 },
-      { step_number: 2, description: 'Add yogurt and blend until thick and smooth.', duration_minutes: 2 },
+      {
+        step_number: 1,
+        description: 'Add frozen bananas and passion fruit pulp to a blender.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 2,
+        description: 'Add yogurt and blend until thick and smooth.',
+        duration_minutes: 2,
+      },
       { step_number: 3, description: 'Pour into bowls.', duration_minutes: 1 },
-      { step_number: 4, description: 'Top with fresh mango slices, a drizzle of honey, and granola if available.', duration_minutes: 2 },
+      {
+        step_number: 4,
+        description: 'Top with fresh mango slices, a drizzle of honey, and granola if available.',
+        duration_minutes: 2,
+      },
       { step_number: 5, description: 'Serve immediately.', duration_minutes: 1 },
     ],
   },
   {
     name: 'Beef Stir Fry',
     slug: 'beef-stir-fry',
-    description: 'Quick and flavourful beef with colourful vegetables. Ready in under 30 minutes — perfect for busy weeknight dinners in Kampala.',
+    description:
+      'Quick and flavourful beef with colourful vegetables. Ready in under 30 minutes — perfect for busy weeknight dinners in Kampala.',
     author_name: 'Chef Chen',
-    prep_time: 15, cook_time: 10, servings: 4,
+    prep_time: 15,
+    cook_time: 10,
+    servings: 4,
     difficulty: 'easy' as const,
-    rating: 4.6, review_count: 167,
+    rating: 4.6,
+    review_count: 167,
     tags: ['Asian', 'Quick', 'Meat', 'Healthy'],
     imageUrl: 'https://i.ibb.co/xSKK7XWn/lipa-cart-26.jpg',
     ingredients: [
@@ -406,12 +887,36 @@ const recipes = [
     ],
     instructions: [
       { step_number: 1, description: 'Slice beef thinly against the grain.', duration_minutes: 5 },
-      { step_number: 2, description: 'Cut vegetables into bite-sized pieces.', duration_minutes: 5 },
-      { step_number: 3, description: 'Heat oil in a wok or large pan over high heat.', duration_minutes: 2 },
-      { step_number: 4, description: 'Stir-fry beef for 2 minutes. Remove and set aside.', duration_minutes: 2 },
-      { step_number: 5, description: 'Add vegetables and stir-fry for 3-4 minutes.', duration_minutes: 4 },
-      { step_number: 6, description: 'Return beef to wok with garlic and ginger.', duration_minutes: 1 },
-      { step_number: 7, description: 'Season with salt and soy sauce, toss everything together.', duration_minutes: 1 },
+      {
+        step_number: 2,
+        description: 'Cut vegetables into bite-sized pieces.',
+        duration_minutes: 5,
+      },
+      {
+        step_number: 3,
+        description: 'Heat oil in a wok or large pan over high heat.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 4,
+        description: 'Stir-fry beef for 2 minutes. Remove and set aside.',
+        duration_minutes: 2,
+      },
+      {
+        step_number: 5,
+        description: 'Add vegetables and stir-fry for 3-4 minutes.',
+        duration_minutes: 4,
+      },
+      {
+        step_number: 6,
+        description: 'Return beef to wok with garlic and ginger.',
+        duration_minutes: 1,
+      },
+      {
+        step_number: 7,
+        description: 'Season with salt and soy sauce, toss everything together.',
+        duration_minutes: 1,
+      },
       { step_number: 8, description: 'Serve hot over steamed rice.', duration_minutes: 1 },
     ],
   },
@@ -474,23 +979,42 @@ async function seed(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
 
   // Check if data already exists and is complete
-  const existingCategories = await strapi.documents('api::category.category').findMany({ limit: 100 });
+  const existingCategories = await strapi
+    .documents('api::category.category')
+    .findMany({ limit: 100 });
   const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({ limit: 100 });
   const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
+  const existingShoppingLists = await strapi
+    .documents('api::shopping-list.shopping-list')
+    .findMany({
+      limit: 100,
+      populate: { items: true } as any,
+    });
+
+  const templateLists = existingShoppingLists.filter((list: any) => list.customer == null);
+  const templatesHaveItems =
+    templateLists.length >= shoppingLists.length &&
+    templateLists.every((list: any) => Array.isArray(list.items) && list.items.length > 0);
 
   const isComplete =
     existingCategories.length >= categories.length &&
     existingRecipes.length >= recipes.length &&
-    existingProducts.length >= products.length;
+    existingProducts.length >= products.length &&
+    existingShoppingLists.length >= shoppingLists.length &&
+    templatesHaveItems;
 
   if (isComplete) {
-    console.log(`⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes), skipping.`);
+    console.log(
+      `⏭️  Seed data is complete (${existingCategories.length} cats, ${existingProducts.length} prods, ${existingRecipes.length} recipes, ${existingShoppingLists.length} lists), skipping.`,
+    );
     return;
   }
 
   // Incomplete or outdated — clear everything and re-seed
   if (existingCategories.length > 0) {
-    console.log(`🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes) — clearing...`);
+    console.log(
+      `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}) — clearing...`,
+    );
     const contentTypes = [
       'api::recipe.recipe',
       'api::shopping-list.shopping-list',
@@ -528,7 +1052,12 @@ async function seed(strapi: Core.Strapi) {
       status: 'published',
     });
     categoryMap[cat.slug] = created.documentId;
-    imageQueue.push({ uid: 'api::category.category', documentId: created.documentId, imageUrl, name: cat.slug });
+    imageQueue.push({
+      uid: 'api::category.category',
+      documentId: created.documentId,
+      imageUrl,
+      name: cat.slug,
+    });
     console.log(`  ✅ Category: ${cat.name}`);
   }
 
@@ -548,7 +1077,54 @@ async function seed(strapi: Core.Strapi) {
     console.log(`  ✅ Subcategory: ${sub.name}`);
   }
 
-  // Seed products
+  // Seed products and build name-to-documentId map
+  const productMap: Record<string, string> = {};
+  const productLookup: Array<{ name: string; normalized: string; documentId: string }> = [];
+
+  const normalizeName = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const ingredientAliases: Record<string, string> = {
+    eggs: 'eggs tray of 30',
+    egg: 'eggs tray of 30',
+    onion: 'onions',
+    yogurt: 'yogurt 500ml',
+    rice: 'rice 1kg',
+    'basmati rice': 'rice 1kg',
+    bread: 'bread loaf',
+    bananas: 'bananas matooke',
+    'green bananas': 'bananas matooke',
+    'green bananas matooke': 'bananas matooke',
+    'maize flour': 'maize flour posho 2kg',
+    water: 'mineral water 1 5l',
+  };
+
+  const resolveProductDocumentId = (rawName: string): string | undefined => {
+    const normalized = normalizeName(rawName);
+
+    // Exact name match first
+    const exact = productLookup.find((p) => p.normalized === normalized);
+    if (exact) return exact.documentId;
+
+    // Alias mapping for common recipe/template naming differences
+    const alias = ingredientAliases[normalized];
+    if (alias) {
+      const aliasMatch = productLookup.find((p) => p.normalized === alias);
+      if (aliasMatch) return aliasMatch.documentId;
+    }
+
+    // Fuzzy contains match as fallback
+    const fuzzy = productLookup.find(
+      (p) => p.normalized.includes(normalized) || normalized.includes(p.normalized),
+    );
+    return fuzzy?.documentId;
+  };
+
   for (const prod of products) {
     const { categorySlug, subcategorySlug, imageUrl, ...data } = prod;
     const created = await strapi.documents('api::product.product').create({
@@ -556,35 +1132,77 @@ async function seed(strapi: Core.Strapi) {
         ...data,
         is_active: true,
         category: { documentId: categoryMap[categorySlug] },
-        ...(subcategorySlug ? { subcategory: { documentId: subcategoryMap[subcategorySlug] } } : {}),
+        ...(subcategorySlug
+          ? { subcategory: { documentId: subcategoryMap[subcategorySlug] } }
+          : {}),
       } as any,
       status: 'published',
     });
-    imageQueue.push({ uid: 'api::product.product', documentId: created.documentId, imageUrl, name: prod.slug });
+    productMap[prod.name] = created.documentId;
+    productLookup.push({
+      name: prod.name,
+      normalized: normalizeName(prod.name),
+      documentId: created.documentId,
+    });
+    imageQueue.push({
+      uid: 'api::product.product',
+      documentId: created.documentId,
+      imageUrl,
+      name: prod.slug,
+    });
     console.log(`  ✅ Product: ${prod.name}`);
   }
 
-  // Seed recipes
+  // Seed recipes with linked products
   for (const recipe of recipes) {
-    const { imageUrl, ...data } = recipe;
+    const { imageUrl, ...recipeData } = recipe;
+    // Link ingredients to actual products by name
+    const linkedIngredients = (recipeData.ingredients || []).map((ing: any) => {
+      const productDocumentId = resolveProductDocumentId(String(ing.name || ''));
+      return {
+        ...ing,
+        product: productDocumentId ? { documentId: productDocumentId } : undefined,
+      };
+    });
     const created = await strapi.documents('api::recipe.recipe').create({
-      data: data as any,
+      data: {
+        ...recipeData,
+        ingredients: linkedIngredients,
+      } as any,
       status: 'published',
     });
-    imageQueue.push({ uid: 'api::recipe.recipe', documentId: created.documentId, imageUrl, name: recipe.slug });
+    imageQueue.push({
+      uid: 'api::recipe.recipe',
+      documentId: created.documentId,
+      imageUrl,
+      name: recipe.slug,
+    });
     console.log(`  ✅ Recipe: ${recipe.name}`);
   }
 
-  // Seed shopping list templates
+  // Seed shopping list templates with linked products
   for (const list of shoppingLists) {
+    // Link shopping list items to actual products by name
+    const linkedItems = (list.items || []).map((item: any) => {
+      const productDocumentId = resolveProductDocumentId(String(item.name || ''));
+      return {
+        ...item,
+        product: productDocumentId ? { documentId: productDocumentId } : undefined,
+      };
+    });
     await strapi.documents('api::shopping-list.shopping-list').create({
-      data: list as any,
+      data: {
+        ...list,
+        items: linkedItems,
+      } as any,
       status: 'published',
     });
     console.log(`  ✅ Shopping List: ${list.name}`);
   }
 
-  console.log(`🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for background upload.`);
+  console.log(
+    `🌱 Phase 1 complete! All entities created. Queued ${imageQueue.length} images for background upload.`,
+  );
 
   // ── Phase 2: Upload images in background (don't block server startup) ──
   setTimeout(async () => {
@@ -605,7 +1223,9 @@ async function seed(strapi: Core.Strapi) {
           console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ✅`);
         } else {
           failed++;
-          console.log(`  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ⚠️ download failed`);
+          console.log(
+            `  🖼️  [${success + failed}/${imageQueue.length}] ${item.name} ⚠️ download failed`,
+          );
         }
       } catch (e) {
         failed++;

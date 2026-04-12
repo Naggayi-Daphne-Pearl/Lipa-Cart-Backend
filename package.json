@@ -21,7 +21,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky || true",
-    "seed": "npx ts-node scripts/seed.ts"
+    "seed": "strapi develop"
   },
   "dependencies": {
     "@sentry/node": "^10.46.0",

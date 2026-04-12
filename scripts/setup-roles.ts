@@ -73,7 +73,6 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       { action: 'find', contentType: 'api::rating.rating' },
       { action: 'findOne', contentType: 'api::rating.rating' },
       { action: 'create', contentType: 'api::rating.rating' },
-      { action: 'update', contentType: 'api::rating.rating' },
 
       // View shoppers and riders (for order context)
       { action: 'find', contentType: 'api::shopper.shopper' },
@@ -295,35 +294,52 @@ export default async function setupRoles(strapi: Core.Strapi) {
         });
       }
 
-      // Set permissions for this role
+      // Batch-load all existing permissions for this role in one query
+      const existingPerms: any[] = await strapi
+        .query('plugin::users-permissions.permission')
+        .findMany({ where: { role: role.id }, limit: 500 });
+      const enabledSet = new Set(existingPerms.filter((p) => p.enabled).map((p) => p.action));
+      const disabledMap = new Map(
+        existingPerms.filter((p) => !p.enabled).map((p) => [p.action, p.id]),
+      );
+
+      const toCreate: string[] = [];
+      const toEnable: number[] = [];
+
       for (const { action, contentType } of roleDef.permissions) {
         const permissionAction = `${contentType}.${action}`;
-
-        const existing = await strapi.query('plugin::users-permissions.permission').findOne({
-          where: {
-            action: permissionAction,
-            role: role.id,
-          },
-        });
-
-        if (!existing) {
-          await strapi.query('plugin::users-permissions.permission').create({
-            data: {
-              action: permissionAction,
-              role: role.id,
-              enabled: true,
-            },
-          });
-        } else if (!existing.enabled) {
-          await strapi.query('plugin::users-permissions.permission').update({
-            where: { id: existing.id },
-            data: { enabled: true },
-          });
+        if (enabledSet.has(permissionAction)) continue;
+        const disabledId = disabledMap.get(permissionAction);
+        if (disabledId !== undefined) {
+          toEnable.push(disabledId);
+        } else {
+          toCreate.push(permissionAction);
         }
       }
 
+      // Create missing permissions
+      await Promise.all(
+        toCreate.map((permissionAction) =>
+          strapi.query('plugin::users-permissions.permission').create({
+            data: { action: permissionAction, role: role.id, enabled: true },
+          }),
+        ),
+      );
+
+      // Re-enable any disabled permissions
+      await Promise.all(
+        toEnable.map((id) =>
+          strapi.query('plugin::users-permissions.permission').update({
+            where: { id },
+            data: { enabled: true },
+          }),
+        ),
+      );
+
       console.log(
-        `   ✓ ${roleDef.name} role configured with ${roleDef.permissions.length} permissions`,
+        `   ✓ ${roleDef.name} role configured with ${roleDef.permissions.length} permissions` +
+          (toCreate.length > 0 ? ` (${toCreate.length} new)` : '') +
+          (toEnable.length > 0 ? ` (${toEnable.length} re-enabled)` : ''),
       );
     } catch (error) {
       console.error(`   ✗ Error setting up ${roleDef.name} role:`, error);

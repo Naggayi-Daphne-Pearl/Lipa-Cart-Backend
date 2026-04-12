@@ -25,8 +25,19 @@ export default {
   },
 
   async bootstrap({ strapi }: { strapi: Core.Strapi }) {
-    // Setup roles first
-    await setupRoles(strapi);
+    const skipBootstrapSync = process.env.SKIP_BOOTSTRAP_SYNC === 'true';
+    const isDev = process.env.NODE_ENV !== 'production';
+    const shouldSyncBootstrap =
+      !skipBootstrapSync && (!isDev || process.env.FORCE_BOOTSTRAP_SYNC === 'true');
+
+    // In local dev, skip expensive role/seed sync unless FORCE_BOOTSTRAP_SYNC=true.
+    if (shouldSyncBootstrap) {
+      await setupRoles(strapi);
+    } else {
+      strapi.log.info(
+        '[bootstrap] Skipping role setup (set FORCE_BOOTSTRAP_SYNC=true to run in dev).',
+      );
+    }
 
     const publicRole = await strapi
       .query('plugin::users-permissions.role')
@@ -72,25 +83,30 @@ export default {
       { action: 'findOne', contentType: 'api::rating.rating' },
     ];
 
-    for (const { action, contentType } of publicPermissions) {
-      const existing = await strapi.query('plugin::users-permissions.permission').findOne({
-        where: {
-          action: `${contentType}.${action}`,
-          role: publicRole.id,
-        },
-      });
+    if (shouldSyncBootstrap) {
+      // Batch-load all existing public permissions in one query
+      const existingPublicPerms: any[] = await strapi
+        .query('plugin::users-permissions.permission')
+        .findMany({ where: { role: publicRole.id }, limit: 500 });
+      const existingPublicSet = new Set(existingPublicPerms.map((p: any) => p.action));
 
-      if (!existing) {
-        await strapi.query('plugin::users-permissions.permission').create({
-          data: {
-            action: `${contentType}.${action}`,
-            role: publicRole.id,
-            enabled: true,
-          },
-        });
-      }
+      const missingPublicPerms = publicPermissions.filter(
+        ({ action, contentType }) => !existingPublicSet.has(`${contentType}.${action}`),
+      );
+
+      await Promise.all(
+        missingPublicPerms.map(({ action, contentType }) =>
+          strapi.query('plugin::users-permissions.permission').create({
+            data: { action: `${contentType}.${action}`, role: publicRole.id, enabled: true },
+          }),
+        ),
+      );
+
+      await seed(strapi);
+    } else {
+      strapi.log.info(
+        '[bootstrap] Skipping public permissions sync + seed (set FORCE_BOOTSTRAP_SYNC=true to run in dev).',
+      );
     }
-
-    await seed(strapi);
   },
 };

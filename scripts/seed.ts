@@ -1105,21 +1105,35 @@ async function seed(strapi: Core.Strapi) {
   const existingCategories = await strapi
     .documents('api::category.category')
     .findMany({ limit: 100 });
+  const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
+  // Fast pre-check: if counts already meet minimums and SEED_REPLACE_IMAGES is off,
+  // skip the expensive populate queries entirely.
+  const fastCheck =
+    !shouldReplaceImages &&
+    existingCategories.length >= categories.length &&
+    existingProducts.length >= products.length;
+
+  if (fastCheck) {
+    const [fastRecipes, fastLists] = await Promise.all([
+      strapi.documents('api::recipe.recipe').findMany({ limit: 1 }),
+      strapi.documents('api::shopping-list.shopping-list').findMany({ limit: 1 }),
+    ]);
+    if (fastRecipes.length > 0 && fastLists.length > 0) {
+      console.log(
+        `⏭️  Seed data present (${existingCategories.length} cats, ${existingProducts.length} prods) — skipping full seed check.`,
+      );
+      return;
+    }
+  }
+
+  // Full check with populate only when fast check is inconclusive
   const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({
     limit: 100,
-    populate: {
-      ingredients: {
-        populate: { product: true },
-      },
-    } as any,
+    populate: { ingredients: { populate: { product: true } } } as any,
   });
-  const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
   const existingShoppingLists = await strapi
     .documents('api::shopping-list.shopping-list')
-    .findMany({
-      limit: 100,
-      populate: { items: true } as any,
-    });
+    .findMany({ limit: 100, populate: { items: true } as any });
 
   const templateLists = existingShoppingLists.filter((list: any) => list.customer == null);
   const templatesHaveItems =

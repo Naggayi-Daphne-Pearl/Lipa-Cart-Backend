@@ -5,7 +5,10 @@ let firebaseApp: admin.app.App | null = null;
 /**
  * Notification message templates keyed by order status.
  */
-const ORDER_STATUS_MESSAGES: Record<string, { title: string; body: (orderNumber: string) => string }> = {
+const ORDER_STATUS_MESSAGES: Record<
+  string,
+  { title: string; body: (orderNumber: string) => string }
+> = {
   payment_confirmed: {
     title: 'Payment Confirmed',
     body: (n) => `Order #${n} payment has been confirmed. A shopper will be assigned soon.`,
@@ -79,7 +82,9 @@ export function initFirebase(): boolean {
     }
 
     if (!credential) {
-      console.warn('[notifications] Firebase credentials not configured — push notifications disabled');
+      console.warn(
+        '[notifications] Firebase credentials not configured — push notifications disabled',
+      );
       return false;
     }
 
@@ -101,6 +106,25 @@ export function isFirebaseReady(): boolean {
  * Send a push notification to a single device token.
  * Silently skips if Firebase is not configured or the token is empty.
  */
+/**
+ * FCM error codes that are worth retrying. These are transient network or
+ * backend blips — not token-stale errors, which we should fail fast on since
+ * retries will never succeed.
+ */
+const RETRYABLE_FCM_CODES = new Set([
+  'messaging/internal-error',
+  'messaging/server-unavailable',
+  'messaging/unknown-error',
+  'messaging/timeout',
+]);
+
+const PUSH_MAX_ATTEMPTS = 3;
+const PUSH_BASE_DELAY_MS = 250;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function sendPush(
   fcmToken: string,
   title: string,
@@ -109,40 +133,60 @@ export async function sendPush(
 ): Promise<boolean> {
   if (!firebaseApp || !fcmToken) return false;
 
-  try {
-    const route = data?.route || '/';
+  const route = data?.route || '/';
+  const payload = {
+    token: fcmToken,
+    notification: { title, body },
+    data: { ...(data ?? {}), title, body },
+    android: {
+      priority: 'high' as const,
+      notification: { channelId: 'lipacart_orders', sound: 'default' },
+    },
+    apns: {
+      payload: { aps: { sound: 'default', badge: 1 } },
+    },
+    webpush: {
+      headers: { Urgency: 'high' },
+      notification: {
+        title,
+        body,
+        icon: '/favicon.png',
+        badge: '/favicon.png',
+        requireInteraction: true,
+      },
+      fcmOptions: {
+        link: route,
+      },
+    },
+  };
 
-    await admin.messaging(firebaseApp).send({
-      token: fcmToken,
-      notification: { title, body },
-      data: { ...(data ?? {}), title, body },
-      android: {
-        priority: 'high',
-        notification: { channelId: 'lipacart_orders', sound: 'default' },
-      },
-      apns: {
-        payload: { aps: { sound: 'default', badge: 1 } },
-      },
-      webpush: {
-        headers: { Urgency: 'high' },
-        notification: {
-          title,
-          body,
-          icon: '/favicon.png',
-          badge: '/favicon.png',
-          requireInteraction: true,
-        },
-        fcmOptions: {
-          link: route,
-        },
-      },
-    });
-    return true;
-  } catch (err: any) {
-    // Token may be stale — log but don't crash
-    console.error(`[notifications] Failed to send to token ${fcmToken.slice(0, 12)}...:`, err?.message);
-    return false;
+  const tokenPreview = fcmToken.slice(0, 12);
+  for (let attempt = 1; attempt <= PUSH_MAX_ATTEMPTS; attempt++) {
+    try {
+      await admin.messaging(firebaseApp).send(payload);
+      if (attempt > 1) {
+        console.info(`[notifications] Push to ${tokenPreview}... succeeded on attempt ${attempt}`);
+      }
+      return true;
+    } catch (err: any) {
+      const code = err?.errorInfo?.code || err?.code;
+      const retryable = RETRYABLE_FCM_CODES.has(code);
+      if (!retryable || attempt === PUSH_MAX_ATTEMPTS) {
+        console.error(
+          `[notifications] Push to ${tokenPreview}... failed after ${attempt} attempt(s) (code=${code}):`,
+          err?.message,
+        );
+        return false;
+      }
+      // Exponential backoff: 250ms, 500ms
+      const delay = PUSH_BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.warn(
+        `[notifications] Push to ${tokenPreview}... transient failure (code=${code}), retrying in ${delay}ms`,
+      );
+      await sleep(delay);
+    }
   }
+  return false;
 }
 
 /**
@@ -170,7 +214,9 @@ export async function saveNotification(
       },
     });
   } catch (err: any) {
-    console.error('[notifications] Failed to save notification record:', err?.message);
+    strapi?.log?.error(
+      `[notifications] Failed to save notification record for user ${userId}: ${err?.message}`,
+    );
   }
 }
 
@@ -215,24 +261,27 @@ export async function notifyOrderStatusChange(
 
     // Send push (only if Firebase is ready and token exists)
     if (isFirebaseReady() && customerUser.fcm_token) {
-      console.log(`[notifications] Sending push to user ${customerUser.id}, token: ${customerUser.fcm_token.slice(0, 20)}...`);
+      console.log(
+        `[notifications] Sending push to user ${customerUser.id}, token: ${customerUser.fcm_token.slice(0, 20)}...`,
+      );
       const sent = await sendPush(customerUser.fcm_token, title, body, data);
       console.log(`[notifications] Push ${sent ? 'sent successfully' : 'FAILED'}`);
     } else {
-      console.warn(`[notifications] Skipping push — firebase=${isFirebaseReady()}, token=${!!customerUser.fcm_token}`);
+      console.warn(
+        `[notifications] Skipping push — firebase=${isFirebaseReady()}, token=${!!customerUser.fcm_token}`,
+      );
     }
   } catch (err: any) {
-    console.error('[notifications] notifyOrderStatusChange error:', err?.message);
+    strapi?.log?.error(
+      `[notifications] notifyOrderStatusChange(order=${orderId}, status=${newStatus}) failed: ${err?.message}`,
+    );
   }
 }
 
 /**
  * Notify online shoppers that a new order is available.
  */
-export async function notifyShoppersNewTask(
-  strapi: any,
-  orderNumber: string,
-): Promise<void> {
+export async function notifyShoppersNewTask(strapi: any, orderNumber: string): Promise<void> {
   try {
     const shoppers: any[] = await strapi.db.query('api::shopper.shopper').findMany({
       where: { is_online: true, kyc_status: 'approved' },
@@ -265,17 +314,16 @@ export async function notifyShoppersNewTask(
       }
     }
   } catch (err: any) {
-    console.error('[notifications] notifyShoppersNewTask error:', err?.message);
+    strapi?.log?.error(
+      `[notifications] notifyShoppersNewTask(order=${orderNumber}) failed: ${err?.message}`,
+    );
   }
 }
 
 /**
  * Notify online riders that a new delivery is ready for pickup.
  */
-export async function notifyRidersNewDelivery(
-  strapi: any,
-  orderNumber: string,
-): Promise<void> {
+export async function notifyRidersNewDelivery(strapi: any, orderNumber: string): Promise<void> {
   try {
     const riders: any[] = await strapi.db.query('api::rider.rider').findMany({
       where: { is_online: true, kyc_status: 'approved' },
@@ -308,6 +356,8 @@ export async function notifyRidersNewDelivery(
       }
     }
   } catch (err: any) {
-    console.error('[notifications] notifyRidersNewDelivery error:', err?.message);
+    strapi?.log?.error(
+      `[notifications] notifyRidersNewDelivery(order=${orderNumber}) failed: ${err?.message}`,
+    );
   }
 }

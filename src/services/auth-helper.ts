@@ -72,3 +72,47 @@ export async function requireAuth(
   }
   return { strapiUser: result.strapiUser, customUser: result.customUser };
 }
+
+/**
+ * Verifies the request is authenticated AND the caller has the Strapi Admin
+ * role (via users-permissions, not the custom `api::user.user` user_type
+ * enum). Returns the auth result on success, or null after sending the error.
+ *
+ * Use this instead of `customUser.user_type === 'admin'` — the custom user
+ * table is writable via other endpoints and is not the source of truth for
+ * role-based access control.
+ */
+export async function requireAdmin(
+  ctx: any,
+  strapi: any,
+): Promise<{ strapiUser: any; customUser: any } | null> {
+  const authHeader = ctx.request.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    ctx.unauthorized('Authentication required');
+    return null;
+  }
+  const token = authHeader.slice(7);
+  let jwtUser: any;
+  try {
+    jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
+  } catch {
+    ctx.unauthorized('Invalid token');
+    return null;
+  }
+  const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
+    where: { id: jwtUser.id },
+    populate: ['role'],
+  });
+  if (!strapiUser) {
+    ctx.unauthorized('User not found');
+    return null;
+  }
+  if (!strapiUser.role || strapiUser.role.name !== 'Admin') {
+    ctx.forbidden('Admin role required');
+    return null;
+  }
+  const customUser: any = await strapi.db.query('api::user.user').findOne({
+    where: { phone: strapiUser.username },
+  });
+  return { strapiUser, customUser };
+}

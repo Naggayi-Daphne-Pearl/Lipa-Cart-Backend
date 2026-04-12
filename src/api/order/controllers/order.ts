@@ -5,9 +5,53 @@ import {
   notifyRidersNewDelivery,
 } from '../../../services/notification';
 import { sendOrderConfirmationEmail, sendDeliveryReceiptEmail } from '../../../services/email';
-import { requireAuth } from '../../../services/auth-helper';
+import { requireAuth, requireAdmin } from '../../../services/auth-helper';
 
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
+  /**
+   * Authenticated customers create an order via POST /api/orders. Client-supplied
+   * subtotal/service_fee/delivery_fee/total are IGNORED — they'll be set to 0
+   * here and recomputed by POST /api/order-items/bulk once the line items land.
+   * The customer relation is forced to match the authenticated user.
+   */
+  async create(ctx: any) {
+    try {
+      const strapiUser = ctx.state.user;
+      if (!strapiUser) {
+        return ctx.unauthorized('Authentication required');
+      }
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: strapiUser.username },
+      });
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can create orders');
+      }
+
+      // Preserve the address + payment fields from the client but force
+      // ownership and wipe client totals — those are server-computed.
+      const body = (ctx.request.body?.data ?? {}) as any;
+      ctx.request.body = {
+        data: {
+          order_number: body.order_number,
+          delivery_address: body.delivery_address,
+          payment_method: body.payment_method,
+          special_instructions: body.special_instructions,
+          status: body.status ?? 'pending',
+          customer: customUser.id,
+          subtotal: 0,
+          service_fee: 0,
+          delivery_fee: 0,
+          total: 0,
+        },
+      };
+
+      return super.create(ctx);
+    } catch (error) {
+      console.error('ERROR: Failed to create order:', error);
+      throw error;
+    }
+  },
+
   async find(ctx: any) {
     try {
       // Authenticate via the default auth middleware (route uses standard auth)
@@ -475,15 +519,12 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async confirmPayment(ctx: any) {
     try {
-      const auth = await requireAuth(ctx, strapi);
+      // Gate on the Strapi role (source of truth for RBAC) rather than the
+      // custom user_type enum, which is writable via other endpoints.
+      const auth = await requireAdmin(ctx, strapi);
       if (!auth) return;
-      const { customUser } = auth;
 
       const { id } = ctx.params; // documentId of the order
-
-      if (!customUser || customUser.user_type !== 'admin') {
-        return ctx.forbidden('Only admins can confirm payments');
-      }
 
       // Find the order
       const order: any = await strapi.db.query('api::order.order').findOne({
@@ -1076,25 +1117,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async adminCancelOrder(ctx: any) {
     try {
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      // Verify admin role
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-        populate: ['role'],
-      });
-      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
-        return ctx.forbidden('Only admins can cancel orders');
-      }
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
 
       const { id } = ctx.params;
       const { cancellation_reason } = ctx.request.body;
@@ -1134,24 +1158,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async adminReassignShopper(ctx: any) {
     try {
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-        populate: ['role'],
-      });
-      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
-        return ctx.forbidden('Only admins can reassign shoppers');
-      }
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
 
       const { id } = ctx.params;
       const order: any = await strapi.db.query('api::order.order').findOne({
@@ -1190,24 +1198,8 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
    */
   async adminReassignRider(ctx: any) {
     try {
-      const authHeader = ctx.request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return ctx.unauthorized('Authentication required');
-      }
-      const token = authHeader.slice(7);
-      let jwtUser: any;
-      try {
-        jwtUser = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-      } catch {
-        return ctx.unauthorized('Invalid token');
-      }
-      const strapiUser: any = await strapi.query('plugin::users-permissions.user').findOne({
-        where: { id: jwtUser.id },
-        populate: ['role'],
-      });
-      if (!strapiUser?.role || strapiUser.role.name !== 'Admin') {
-        return ctx.forbidden('Only admins can reassign riders');
-      }
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
 
       const { id } = ctx.params;
       const order: any = await strapi.db.query('api::order.order').findOne({

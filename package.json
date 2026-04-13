@@ -30,7 +30,7 @@
     "@strapi/provider-upload-cloudinary": "^5.42.0",
     "@strapi/strapi": "5.33.4",
     "africastalking": "^0.7.0",
-    "better-sqlite3": "12.8.0",
+    "better-sqlite3": "12.9.0",
     "firebase-admin": "^13.8.0",
     "fs-extra": "^10.0.0",
     "mime-types": "^2.1.27",

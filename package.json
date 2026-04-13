@@ -25,10 +25,10 @@
   },
   "dependencies": {
     "@sentry/node": "^10.48.0",
-    "@strapi/plugin-cloud": "5.33.4",
-    "@strapi/plugin-users-permissions": "5.33.4",
+    "@strapi/plugin-cloud": "5.42.0",
+    "@strapi/plugin-users-permissions": "5.42.0",
     "@strapi/provider-upload-cloudinary": "^5.42.0",
-    "@strapi/strapi": "5.33.4",
+    "@strapi/strapi": "5.42.0",
     "africastalking": "^0.7.0",
     "better-sqlite3": "12.8.0",
     "firebase-admin": "^13.8.0",

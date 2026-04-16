@@ -1,3 +1,27 @@
-import { factories } from '@strapi/strapi';
-
-export default factories.createCoreRouter('api::payment.payment');
+export default {
+  routes: [
+    {
+      method: 'POST',
+      path: '/payments/mobile-money/initiate',
+      handler: 'payment.initiateMobileMoney',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'GET',
+      path: '/payments/:id/status',
+      handler: 'payment.checkStatus',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/payments/pawapay/webhook',
+      handler: 'payment.pawapayWebhook',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    { method: 'GET', path: '/payments', handler: 'payment.find' },
+    { method: 'GET', path: '/payments/:id', handler: 'payment.findOne' },
+    { method: 'POST', path: '/payments', handler: 'payment.create' },
+    { method: 'PUT', path: '/payments/:id', handler: 'payment.update' },
+    { method: 'DELETE', path: '/payments/:id', handler: 'payment.delete' },
+  ],
+};

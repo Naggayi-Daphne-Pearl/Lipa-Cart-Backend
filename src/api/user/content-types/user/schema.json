@@ -64,6 +64,9 @@
     "fcm_token": {
       "type": "text"
     },
+    "fcm_tokens": {
+      "type": "json"
+    },
     "remember_me": {
       "type": "boolean",
       "default": true

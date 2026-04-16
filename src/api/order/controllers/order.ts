@@ -155,16 +155,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         },
         delivery_address: true,
         customer: true,
-        shopper: {
-          populate: {
-            shopper: true,
-          },
-        },
-        rider: {
-          populate: {
-            rider: true,
-          },
-        },
+        shopper: true,
+        rider: true,
+        rating: true,
       };
 
       const result = await super.find(ctx);
@@ -239,16 +232,9 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         };
         ctx.query.populate.delivery_address = true;
         ctx.query.populate.customer = true;
-        ctx.query.populate.shopper = {
-          populate: {
-            shopper: true,
-          },
-        };
-        ctx.query.populate.rider = {
-          populate: {
-            rider: true,
-          },
-        };
+        ctx.query.populate.shopper = true;
+        ctx.query.populate.rider = true;
+        ctx.query.populate.rating = true;
       }
 
       const result = await super.findOne(ctx);

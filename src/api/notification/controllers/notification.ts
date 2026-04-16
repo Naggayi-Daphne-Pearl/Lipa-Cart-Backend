@@ -1,5 +1,42 @@
 import { factories } from '@strapi/strapi';
-import { sendPush, isFirebaseReady } from '../../../services/notification';
+import {
+  sendPush,
+  isFirebaseReady,
+  notifyUserPromo,
+  notifySystemAlert,
+} from '../../../services/notification';
+import { requireAdmin } from '../../../services/auth-helper';
+
+function parseNotificationRef(ref: unknown): { id?: number; documentId?: string } {
+  const value = String(ref ?? '').trim();
+  if (!value) return {};
+  if (/^\d+$/.test(value)) {
+    return { id: Number(value) };
+  }
+  return { documentId: value };
+}
+
+function normalizeTargetUserIds(userIds: unknown): number[] {
+  if (!Array.isArray(userIds)) return [];
+
+  return Array.from(
+    new Set(
+      userIds.map((id: any) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0),
+    ),
+  );
+}
+
+async function runBatched<T>(items: T[], batchSize: number, work: (item: T) => Promise<void>) {
+  for (let index = 0; index < items.length; index += batchSize) {
+    const chunk = items.slice(index, index + batchSize);
+    const results = await Promise.allSettled(chunk.map((item) => work(item)));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        throw result.reason;
+      }
+    }
+  }
+}
 
 export default factories.createCoreController('api::notification.notification', ({ strapi }) => ({
   /**
@@ -18,7 +55,7 @@ export default factories.createCoreController('api::notification.notification', 
 
       if (!isFirebaseReady()) {
         return ctx.badRequest(
-          'Firebase is not initialized. Set FIREBASE_SERVICE_ACCOUNT_JSON env var and restart the backend.'
+          'Firebase is not initialized. Set FIREBASE_SERVICE_ACCOUNT_JSON env var and restart the backend.',
         );
       }
 
@@ -30,7 +67,7 @@ export default factories.createCoreController('api::notification.notification', 
 
       if (!customUser.fcm_token) {
         return ctx.badRequest(
-          `No FCM token stored for user ${customUser.phone}. Open the app, log in, and allow notifications first.`
+          `No FCM token stored for user ${customUser.phone}. Open the app, log in, and allow notifications first.`,
         );
       }
 
@@ -111,12 +148,29 @@ export default factories.createCoreController('api::notification.notification', 
       const authUser = ctx.state.user;
       if (!authUser) return ctx.unauthorized('Authentication required');
 
+      const customUser: any = await strapi.db.query('api::user.user').findOne({
+        where: { phone: authUser.username },
+      });
+      if (!customUser) return ctx.notFound('User not found');
+
       const { id } = ctx.params;
 
-      await strapi.db.query('api::notification.notification').update({
-        where: { documentId: id },
+      const notificationRef = parseNotificationRef(id);
+      if (!notificationRef.id && !notificationRef.documentId) {
+        return ctx.badRequest('Invalid notification id');
+      }
+
+      const updated = await strapi.db.query('api::notification.notification').update({
+        where: {
+          ...notificationRef,
+          user: customUser.id,
+        },
         data: { is_read: true },
       });
+
+      if (!updated) {
+        return ctx.notFound('Notification not found');
+      }
 
       ctx.body = { ok: true };
     } catch (error) {
@@ -139,15 +193,121 @@ export default factories.createCoreController('api::notification.notification', 
       });
       if (!customUser) return ctx.notFound('User not found');
 
-      await strapi.db.query('api::notification.notification').updateMany({
+      const unread = await strapi.db.query('api::notification.notification').findMany({
         where: { user: customUser.id, is_read: false },
-        data: { is_read: true },
+        select: ['id', 'documentId'],
       });
 
-      ctx.body = { ok: true };
+      if (!Array.isArray(unread) || unread.length == 0) {
+        ctx.body = { ok: true, updated: 0 };
+        return;
+      }
+
+      await Promise.all(
+        unread.map((item: any) => {
+          const ref = parseNotificationRef(item?.id ?? item?.documentId);
+          if (!ref.id && !ref.documentId) return Promise.resolve(null);
+
+          return strapi.db.query('api::notification.notification').update({
+            where: {
+              ...ref,
+              user: customUser.id,
+            },
+            data: { is_read: true },
+          });
+        }),
+      );
+
+      ctx.body = { ok: true, updated: unread.length };
     } catch (error) {
       console.error('Mark all read error:', error);
       ctx.throw(500, 'Failed to mark notifications as read');
+    }
+  },
+
+  /**
+   * Admin: send promo notification to one or more users.
+   * POST /api/notifications/admin/send-promo
+   */
+  async sendPromo(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { title, body, route, userIds } = ctx.request.body ?? {};
+      if (!title || !body) {
+        return ctx.badRequest('title and body are required');
+      }
+
+      const normalizedUserIds = normalizeTargetUserIds(userIds);
+
+      const targetUserIds: number[] =
+        normalizedUserIds.length > 0
+          ? normalizedUserIds
+          : (
+              await strapi.db.query('api::user.user').findMany({
+                where: { user_type: 'customer', is_active: true },
+                select: ['id'],
+              })
+            ).map((user: any) => user.id);
+
+      await runBatched(targetUserIds, 25, async (userId) => {
+        await notifyUserPromo(
+          strapi,
+          userId,
+          String(title),
+          String(body),
+          String(route || '/customer/home'),
+        );
+      });
+
+      ctx.body = { ok: true, deliveredTo: targetUserIds.length };
+    } catch (error) {
+      console.error('Send promo error:', error);
+      ctx.throw(500, 'Failed to send promo notifications');
+    }
+  },
+
+  /**
+   * Admin: send system notification to one or more users.
+   * POST /api/notifications/admin/send-system
+   */
+  async sendSystem(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { title, body, route, userIds } = ctx.request.body ?? {};
+      if (!title || !body) {
+        return ctx.badRequest('title and body are required');
+      }
+
+      const normalizedUserIds = normalizeTargetUserIds(userIds);
+
+      const targetUserIds: number[] =
+        normalizedUserIds.length > 0
+          ? normalizedUserIds
+          : (
+              await strapi.db.query('api::user.user').findMany({
+                where: { is_active: true },
+                select: ['id'],
+              })
+            ).map((user: any) => user.id);
+
+      await runBatched(targetUserIds, 25, async (userId) => {
+        await notifySystemAlert(
+          strapi,
+          userId,
+          String(title),
+          String(body),
+          String(route || '/customer/home'),
+        );
+      });
+
+      ctx.body = { ok: true, deliveredTo: targetUserIds.length };
+    } catch (error) {
+      console.error('Send system error:', error);
+      ctx.throw(500, 'Failed to send system notifications');
     }
   },
 }));

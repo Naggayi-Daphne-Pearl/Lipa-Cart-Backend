@@ -1031,9 +1031,9 @@ const shoppingLists = [
  */
 async function backfillImageUrls(
   strapi: Core.Strapi,
-  existingCategories: any[],
-  existingProducts: any[],
-  existingRecipes: any[],
+  _existingCategories: any[],
+  _existingProducts: any[],
+  _existingRecipes: any[],
   replaceExisting = false,
 ) {
   const imageMap = buildLocalImageMap();
@@ -1042,11 +1042,25 @@ async function backfillImageUrls(
     return;
   }
 
+  // Always re-fetch WITH populate so we can correctly detect which entities
+  // already have an image linked and skip them (avoiding duplicate morph entries).
+  const [populatedCats, populatedProds, populatedRecipes] = await Promise.all([
+    strapi
+      .documents('api::category.category')
+      .findMany({ limit: 100, populate: { image: true } as any }),
+    strapi
+      .documents('api::product.product')
+      .findMany({ limit: 100, populate: { image: true } as any }),
+    strapi
+      .documents('api::recipe.recipe')
+      .findMany({ limit: 100, populate: { image: true } as any }),
+  ]);
+
   let success = 0;
   let skipped = 0;
 
-  for (const cat of existingCategories) {
-    if (cat.image && !replaceExisting) {
+  for (const cat of populatedCats) {
+    if ((cat as any).image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1054,15 +1068,15 @@ async function backfillImageUrls(
       strapi,
       'api::category.category',
       cat.documentId,
-      cat.slug,
+      (cat as any).slug,
       imageMap,
     );
     if (ok) success++;
     else skipped++;
   }
 
-  for (const prod of existingProducts) {
-    if (prod.image && !replaceExisting) {
+  for (const prod of populatedProds) {
+    if ((prod as any).image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1070,15 +1084,15 @@ async function backfillImageUrls(
       strapi,
       'api::product.product',
       prod.documentId,
-      prod.slug,
+      (prod as any).slug,
       imageMap,
     );
     if (ok) success++;
     else skipped++;
   }
 
-  for (const recipe of existingRecipes) {
-    if (recipe.image && !replaceExisting) {
+  for (const recipe of populatedRecipes) {
+    if ((recipe as any).image && !replaceExisting) {
       skipped++;
       continue;
     }
@@ -1086,7 +1100,7 @@ async function backfillImageUrls(
       strapi,
       'api::recipe.recipe',
       recipe.documentId,
-      recipe.slug,
+      (recipe as any).slug,
       imageMap,
     );
     if (ok) success++;
@@ -1098,28 +1112,47 @@ async function backfillImageUrls(
 
 // ── Main seed function ──
 async function seed(strapi: Core.Strapi) {
+  try {
+    await seedImpl(strapi);
+  } catch (e) {
+    // A seed failure must never crash the server — log and continue.
+    console.error('🌱 Seed failed (server will still start):', (e as Error).message);
+  }
+}
+
+async function seedImpl(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
   const shouldReplaceImages = process.env.SEED_REPLACE_IMAGES === 'true';
 
-  // Check if data already exists and is complete
+  const [anyCategories, anyProducts, anyRecipes, anyShoppingLists] = await Promise.all([
+    strapi.documents('api::category.category').findMany({ limit: 1 }),
+    strapi.documents('api::product.product').findMany({ limit: 1 }),
+    strapi.documents('api::recipe.recipe').findMany({ limit: 1 }),
+    strapi.documents('api::shopping-list.shopping-list').findMany({ limit: 1 }),
+  ]);
+  const hasAnySeedData =
+    anyCategories.length > 0 ||
+    anyProducts.length > 0 ||
+    anyRecipes.length > 0 ||
+    anyShoppingLists.length > 0;
+
+  // Check if data already exists and is complete — only count PUBLISHED entries
+  // so a failed/partial seed that left unpublished duplicates doesn't cause a false skip.
   const existingCategories = await strapi
     .documents('api::category.category')
-    .findMany({ limit: 100 });
+    .findMany({ limit: 100, status: 'published' });
+  const existingProducts = await strapi
+    .documents('api::product.product')
+    .findMany({ limit: 100, status: 'published' });
+
+  // Full check with populate only when fast check is inconclusive
   const existingRecipes = await strapi.documents('api::recipe.recipe').findMany({
     limit: 100,
-    populate: {
-      ingredients: {
-        populate: { product: true },
-      },
-    } as any,
+    populate: { ingredients: { populate: { product: true } } } as any,
   });
-  const existingProducts = await strapi.documents('api::product.product').findMany({ limit: 100 });
   const existingShoppingLists = await strapi
     .documents('api::shopping-list.shopping-list')
-    .findMany({
-      limit: 100,
-      populate: { items: true } as any,
-    });
+    .findMany({ limit: 100, populate: { items: true } as any });
 
   const templateLists = existingShoppingLists.filter((list: any) => list.customer == null);
   const templatesHaveItems =
@@ -1144,13 +1177,21 @@ async function seed(strapi: Core.Strapi) {
   // from the old upload-then-reference flow), backfill the URLs in place
   // without wiping data.
   if (isComplete) {
-    const sampleProduct = existingProducts[0] as any;
-    const sampleCategory = existingCategories[0] as any;
-    const sampleRecipe = existingRecipes[0] as any;
+    const [sampleCategory, sampleProduct, sampleRecipe] = await Promise.all([
+      strapi
+        .documents('api::category.category')
+        .findMany({ limit: 1, status: 'published', populate: { image: true } as any }),
+      strapi
+        .documents('api::product.product')
+        .findMany({ limit: 1, status: 'published', populate: { image: true } as any }),
+      strapi
+        .documents('api::recipe.recipe')
+        .findMany({ limit: 1, populate: { image: true } as any }),
+    ]);
     const imagesArePopulated =
-      Boolean(sampleProduct?.image) &&
-      Boolean(sampleCategory?.image) &&
-      Boolean(sampleRecipe?.image);
+      Boolean((sampleProduct[0] as any)?.image) &&
+      Boolean((sampleCategory[0] as any)?.image) &&
+      Boolean((sampleRecipe[0] as any)?.image);
 
     if (imagesArePopulated && !shouldReplaceImages) {
       console.log(
@@ -1176,32 +1217,46 @@ async function seed(strapi: Core.Strapi) {
     return;
   }
 
-  // Incomplete or outdated — clear everything and re-seed
-  if (existingCategories.length > 0) {
-    console.log(
-      `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts}) — clearing...`,
-    );
-    const contentTypes = [
-      'api::recipe.recipe',
-      'api::shopping-list.shopping-list',
-      'api::product.product',
-      'api::subcategory.subcategory',
-      'api::category.category',
-    ] as const;
+  // Incomplete or outdated — clear everything and re-seed.
+  // Always run the clear step when isComplete is false, even if hasAnySeedData appears
+  // false. findMany() without status only returns published entries in Strapi 5, so
+  // draft-only entries (e.g. from a crashed previous seed run) are invisible to the
+  // check but still hold unique slug constraints in the DB. Skipping the clear in that
+  // case causes "This attribute must be unique" errors during Phase 1 creation.
+  console.log(
+    `🔄 Clearing seed data (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts})...`,
+  );
+  const contentTypes = [
+    'api::recipe.recipe',
+    'api::shopping-list.shopping-list',
+    'api::product.product',
+    'api::subcategory.subcategory',
+    'api::category.category',
+  ] as const;
 
-    for (const uid of contentTypes) {
-      const items = await strapi.documents(uid).findMany({ limit: 1000 });
-      for (const item of items) {
-        try {
-          await strapi.documents(uid).delete({ documentId: item.documentId });
-        } catch (e) {
-          console.log(`  ⚠️  Failed to delete ${uid} ${item.documentId}`);
-        }
+  for (const uid of contentTypes) {
+    // Fetch both published and draft entries — findMany() without status only returns
+    // published, so draft-only entries would be missed and left with conflicting slugs.
+    const [publishedItems, draftItems] = await Promise.all([
+      strapi.documents(uid).findMany({ limit: 1000, status: 'published' }),
+      strapi.documents(uid).findMany({ limit: 1000, status: 'draft' }),
+    ]);
+    const allDocumentIds = [
+      ...new Set([
+        ...publishedItems.map((i: any) => i.documentId),
+        ...draftItems.map((i: any) => i.documentId),
+      ]),
+    ];
+    for (const documentId of allDocumentIds) {
+      try {
+        await strapi.documents(uid).delete({ documentId });
+      } catch (e) {
+        console.log(`  ⚠️  Failed to delete ${uid} ${documentId}`);
       }
-      console.log(`  🗑️  Cleared ${uid} (${items.length} items)`);
     }
-    console.log('🗑️  Old data cleared.');
+    console.log(`  🗑️  Cleared ${uid} (${allDocumentIds.length} items)`);
   }
+  console.log('🗑️  Old data cleared.');
 
   // ── Phase 1: Create all entities (fast, no image downloads) ──
   console.log('🌱 Phase 1: Creating entities...');

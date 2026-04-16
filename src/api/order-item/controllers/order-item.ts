@@ -257,8 +257,13 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
                 order.customer.id,
                 'Substitute Suggested',
                 `${substitutes.length} item(s) unavailable — your shopper suggested substitutes.`,
-                'order_status',
+                'substitute_suggestion',
                 order.order_number,
+                {
+                  type: 'substitute_suggestion',
+                  route: '/customer/orders',
+                  orderId: String(order.documentId ?? order.id),
+                },
               ).catch(() => {});
             }
           }
@@ -392,7 +397,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             shopperUser.id,
             title,
             body,
-            'system',
+            'substitute_response',
             order.order_number,
             data,
           ).catch(() => {});
@@ -495,8 +500,13 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
               order.customer.id,
               'Substitute Suggested',
               `Your shopper suggested ${substitute_name} as a substitute for ${item.product_name}.`,
-              'order_status',
+              'substitute_suggestion',
               order.order_number,
+              {
+                type: 'substitute_suggestion',
+                route: '/customer/orders',
+                orderId: String(order.documentId ?? order.id),
+              },
             ).catch(() => {});
           }
         }
@@ -665,6 +675,10 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       const deliveryFee = DELIVERY_FEE_FLAT;
       const total = subtotal + serviceFee + deliveryFee;
 
+      const paymentMethod = String(orderRecord.payment_method || 'mobileMoney');
+      const shouldAutoConfirm = paymentMethod === 'cashOnDelivery';
+      const nextStatus = shouldAutoConfirm ? 'payment_confirmed' : 'payment_processing';
+
       // Single update: persist the recomputed totals AND transition the
       // order from pending to payment_confirmed in one step. After this the
       // order is locked — bulkCreate's status guard will reject any further
@@ -676,10 +690,25 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             service_fee: serviceFee,
             delivery_fee: deliveryFee,
             total,
-            status: 'payment_confirmed',
-            payment_confirmed_at: new Date(),
+            status: nextStatus,
+            payment_confirmed_at: shouldAutoConfirm ? new Date() : null,
           },
         });
+
+        // Create a payment record for online methods so the gateway flow has
+        // a persisted payment entity to update via polling/webhooks.
+        if (!shouldAutoConfirm) {
+          await strapi.entityService.create('api::payment.payment', {
+            data: {
+              order: orderRecord.id,
+              method: paymentMethod === 'card' ? 'card' : 'mobile_money',
+              provider: paymentMethod === 'mobileMoney' ? 'pawapay' : 'manual',
+              amount: total,
+              currency: 'UGX',
+              status: 'processing',
+            },
+          });
+        }
       } catch (updateErr: any) {
         // The items are already in the DB but the order metadata didn't
         // land. Roll back the new items so the customer can retry from a
@@ -700,7 +729,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
           service_fee: serviceFee,
           delivery_fee: deliveryFee,
           total,
-          status: 'payment_confirmed',
+          status: nextStatus,
         },
       };
     } catch (error: any) {

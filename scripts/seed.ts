@@ -1208,32 +1208,46 @@ async function seed(strapi: Core.Strapi) {
     return;
   }
 
-  // Incomplete or outdated — clear everything and re-seed
-  if (hasAnySeedData) {
-    console.log(
-      `🔄 Incomplete seed detected (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts}) — clearing...`,
-    );
-    const contentTypes = [
-      'api::recipe.recipe',
-      'api::shopping-list.shopping-list',
-      'api::product.product',
-      'api::subcategory.subcategory',
-      'api::category.category',
-    ] as const;
+  // Incomplete or outdated — clear everything and re-seed.
+  // Always run the clear step when isComplete is false, even if hasAnySeedData appears
+  // false. findMany() without status only returns published entries in Strapi 5, so
+  // draft-only entries (e.g. from a crashed previous seed run) are invisible to the
+  // check but still hold unique slug constraints in the DB. Skipping the clear in that
+  // case causes "This attribute must be unique" errors during Phase 1 creation.
+  console.log(
+    `🔄 Clearing seed data (${existingCategories.length}/${categories.length} cats, ${existingProducts.length}/${products.length} prods, ${existingRecipes.length}/${recipes.length} recipes, ${existingShoppingLists.length}/${shoppingLists.length} lists, templatesHaveItems=${templatesHaveItems}, recipesHaveLinkedProducts=${recipesHaveLinkedProducts})...`,
+  );
+  const contentTypes = [
+    'api::recipe.recipe',
+    'api::shopping-list.shopping-list',
+    'api::product.product',
+    'api::subcategory.subcategory',
+    'api::category.category',
+  ] as const;
 
-    for (const uid of contentTypes) {
-      const items = await strapi.documents(uid).findMany({ limit: 1000 });
-      for (const item of items) {
-        try {
-          await strapi.documents(uid).delete({ documentId: item.documentId });
-        } catch (e) {
-          console.log(`  ⚠️  Failed to delete ${uid} ${item.documentId}`);
-        }
+  for (const uid of contentTypes) {
+    // Fetch both published and draft entries — findMany() without status only returns
+    // published, so draft-only entries would be missed and left with conflicting slugs.
+    const [publishedItems, draftItems] = await Promise.all([
+      strapi.documents(uid).findMany({ limit: 1000, status: 'published' }),
+      strapi.documents(uid).findMany({ limit: 1000, status: 'draft' }),
+    ]);
+    const allDocumentIds = [
+      ...new Set([
+        ...publishedItems.map((i: any) => i.documentId),
+        ...draftItems.map((i: any) => i.documentId),
+      ]),
+    ];
+    for (const documentId of allDocumentIds) {
+      try {
+        await strapi.documents(uid).delete({ documentId });
+      } catch (e) {
+        console.log(`  ⚠️  Failed to delete ${uid} ${documentId}`);
       }
-      console.log(`  🗑️  Cleared ${uid} (${items.length} items)`);
     }
-    console.log('🗑️  Old data cleared.');
+    console.log(`  🗑️  Cleared ${uid} (${allDocumentIds.length} items)`);
   }
+  console.log('🗑️  Old data cleared.');
 
   // ── Phase 1: Create all entities (fast, no image downloads) ──
   console.log('🌱 Phase 1: Creating entities...');

@@ -1112,6 +1112,15 @@ async function backfillImageUrls(
 
 // ── Main seed function ──
 async function seed(strapi: Core.Strapi) {
+  try {
+    await seedImpl(strapi);
+  } catch (e) {
+    // A seed failure must never crash the server — log and continue.
+    console.error('🌱 Seed failed (server will still start):', (e as Error).message);
+  }
+}
+
+async function seedImpl(strapi: Core.Strapi) {
   console.log('🌱 Checking seed status...');
   const shouldReplaceImages = process.env.SEED_REPLACE_IMAGES === 'true';
 

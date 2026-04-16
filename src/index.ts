@@ -1,6 +1,5 @@
 import type { Core } from '@strapi/strapi';
 import * as Sentry from '@sentry/node';
-import seed from '../scripts/seed';
 import setupRoles from '../scripts/setup-roles';
 import { initFirebase } from './services/notification';
 import { initEmail } from './services/email';
@@ -101,8 +100,6 @@ export default {
           }),
         ),
       );
-
-      await seed(strapi);
     } else {
       strapi.log.info(
         '[bootstrap] Skipping public permissions sync + seed (set FORCE_BOOTSTRAP_SYNC=true to run in dev).',

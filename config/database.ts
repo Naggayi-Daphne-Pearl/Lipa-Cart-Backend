@@ -13,7 +13,9 @@ export default ({ env }) => {
         schema: env('DATABASE_SCHEMA', 'public'),
       },
       pool: {
-        min: env.int('DATABASE_POOL_MIN', 2),
+        // 4 warm connections by default — the app fires 8+ parallel queries
+        // on startup so 2 (the old default) caused queuing on cold starts.
+        min: env.int('DATABASE_POOL_MIN', 4),
         max: env.int('DATABASE_POOL_MAX', 10),
         // Evict idle connections after 8 min — before Railway/Supabase's
         // ~10 min server-side idle timeout kills them underneath Knex,

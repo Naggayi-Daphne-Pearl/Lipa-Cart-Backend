@@ -12,7 +12,20 @@ export default ({ env }) => {
         },
         schema: env('DATABASE_SCHEMA', 'public'),
       },
-      pool: { min: env.int('DATABASE_POOL_MIN', 2), max: env.int('DATABASE_POOL_MAX', 10) },
+      pool: {
+        // 4 warm connections by default — the app fires 8+ parallel queries
+        // on startup so 2 (the old default) caused queuing on cold starts.
+        min: env.int('DATABASE_POOL_MIN', 4),
+        max: env.int('DATABASE_POOL_MAX', 10),
+        // Evict idle connections after 8 min — before Railway/Supabase's
+        // ~10 min server-side idle timeout kills them underneath Knex,
+        // which is what causes the ETIMEDOUT errors on cron jobs.
+        idleTimeoutMillis: env.int('DATABASE_POOL_IDLE_TIMEOUT', 480000),
+        // Cap how long a query waits to acquire a connection from the pool.
+        acquireTimeoutMillis: env.int('DATABASE_POOL_ACQUIRE_TIMEOUT', 30000),
+        // How often (ms) Knex checks the pool for connections to evict.
+        reapIntervalMillis: 1000,
+      },
     },
     sqlite: {
       connection: {

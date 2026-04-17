@@ -22,7 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky || true",
-    "seed": "strapi develop"
+    "seed": "node dist/scripts/run-seed.js"
   },
   "dependencies": {
     "@sentry/node": "^10.48.0",

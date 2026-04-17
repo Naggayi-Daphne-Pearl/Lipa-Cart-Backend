@@ -32,6 +32,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       }
       const customUser: any = await strapi.db.query('api::user.user').findOne({
         where: { phone: strapiUser.username },
+        populate: ['customer'],
       });
       if (!customUser || customUser.user_type !== 'customer') {
         return ctx.forbidden('Only customers can create orders');
@@ -54,7 +55,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       if (!addressRecord) {
         return ctx.badRequest('delivery_address not found');
       }
-      if (addressRecord.customer?.id !== customUser.id) {
+      if (addressRecord.customer?.id !== customUser.customer?.id) {
         return ctx.forbidden('You can only deliver to your own saved addresses');
       }
 
@@ -1111,7 +1112,12 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.forbidden('You can only cancel your own orders');
       }
 
-      const cancellableStatuses = ['pending', 'payment_confirmed', 'shopper_assigned'];
+      const cancellableStatuses = [
+        'pending',
+        'payment_processing',
+        'payment_confirmed',
+        'shopper_assigned',
+      ];
       if (!cancellableStatuses.includes(order.status)) {
         return ctx.badRequest('Order can no longer be cancelled at this stage');
       }

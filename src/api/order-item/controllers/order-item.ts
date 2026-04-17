@@ -573,16 +573,18 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       const createdItems: any[] = [];
       const failedItems: any[] = [];
 
+      // Free-text shopping-list items come in with no product reference or a
+      // `custom_*` stub id. Since there's no catalog to anchor the price to,
+      // we trust the client's estimated_price but cap it to prevent absurd
+      // values; the shopper still sets actual_price during shopping.
+      const MAX_CUSTOM_ITEM_PRICE = 1_000_000;
+
       for (const itemData of items) {
         try {
           const { order: orderDocId, product: productDocId, ...scalarData } = itemData;
 
           if (!orderDocId || String(orderDocId) !== String(firstOrderRef)) {
             failedItems.push({ item: itemData, error: 'All items must target the same order' });
-            continue;
-          }
-          if (!productDocId) {
-            failedItems.push({ item: itemData, error: 'Product reference required' });
             continue;
           }
 
@@ -599,24 +601,64 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             continue;
           }
 
-          const productRecord: any = await strapi.db.query('api::product.product').findOne({
-            where: { documentId: String(productDocId) },
-          });
-          if (!productRecord) {
-            failedItems.push({ item: itemData, error: 'Product not found' });
-            continue;
-          }
-          if (productRecord.is_active === false) {
-            failedItems.push({
-              item: itemData,
-              error: `Product ${productRecord.name} is unavailable`,
+          const isCustomStub = !productDocId || String(productDocId).startsWith('custom_');
+
+          let productRecord: any = null;
+          if (!isCustomStub) {
+            productRecord = await strapi.db.query('api::product.product').findOne({
+              where: { documentId: String(productDocId) },
             });
-            continue;
+            if (!productRecord) {
+              const numericId = Number(productDocId);
+              if (Number.isFinite(numericId)) {
+                productRecord = await strapi.db.query('api::product.product').findOne({
+                  where: { id: numericId },
+                });
+              }
+            }
+            if (!productRecord) {
+              failedItems.push({ item: itemData, error: 'Product not found' });
+              continue;
+            }
+            if (productRecord.is_active === false) {
+              failedItems.push({
+                item: itemData,
+                error: `Product ${productRecord.name} is unavailable`,
+              });
+              continue;
+            }
           }
 
-          // Force estimated_price to the catalog value — never trust the
-          // client's claimed price.
-          const estimatedPrice = Number(productRecord.estimated_price ?? 0);
+          // Catalog items: force estimated_price to the catalog value.
+          // Free-text items: trust the client's price but cap it.
+          let estimatedPrice: number;
+          if (productRecord) {
+            estimatedPrice = Number(productRecord.estimated_price ?? 0);
+          } else {
+            const clientPrice = Number(scalarData.estimated_price ?? 0);
+            if (!Number.isFinite(clientPrice) || clientPrice < 0) {
+              failedItems.push({
+                item: itemData,
+                error: 'estimated_price must be a non-negative number',
+              });
+              continue;
+            }
+            if (clientPrice > MAX_CUSTOM_ITEM_PRICE) {
+              failedItems.push({
+                item: itemData,
+                error: `estimated_price exceeds max of ${MAX_CUSTOM_ITEM_PRICE} for free-text items`,
+              });
+              continue;
+            }
+            if (!scalarData.product_name || typeof scalarData.product_name !== 'string') {
+              failedItems.push({
+                item: itemData,
+                error: 'product_name required for free-text items',
+              });
+              continue;
+            }
+            estimatedPrice = clientPrice;
+          }
 
           const orderItem: any = await strapi.entityService.create('api::order-item.order-item', {
             data: {
@@ -624,7 +666,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
               quantity,
               estimated_price: estimatedPrice,
               order: orderRecord.id,
-              product: productRecord.id,
+              ...(productRecord ? { product: productRecord.id } : {}),
             },
           });
 
@@ -635,7 +677,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       }
 
       if (createdItems.length === 0) {
-        return ctx.badRequest('No valid items to add');
+        return ctx.badRequest('No valid items to add', { failedItems });
       }
 
       // Recompute totals against ALL items currently attached to this order

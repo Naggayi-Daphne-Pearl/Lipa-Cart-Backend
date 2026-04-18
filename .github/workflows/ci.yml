@@ -33,6 +33,12 @@ jobs:
       - name: TypeScript check
         run: npm run check:types
 
+      # Unit tests for pure service helpers. Blocking on green — a red test
+      # here blocks the PR. Integration tests (Strapi boot + DB) will be added
+      # to this step as coverage expands.
+      - name: Unit tests
+        run: npm test
+
       - name: Build
         run: npm run build
         env:

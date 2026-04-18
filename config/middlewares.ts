@@ -31,6 +31,9 @@ export default ({ env }) => [
               env('FRONTEND_URL', 'https://www.lipacart.com'),
               'https://lipacart.com',
               'https://www.lipacart.com',
+              'https://shopper.lipacart.com',
+              'https://rider.lipacart.com',
+              'https://admin.lipacart.com',
             ]
           : (ctx) => {
               // In development, allow any localhost origin (Flutter uses random ports)

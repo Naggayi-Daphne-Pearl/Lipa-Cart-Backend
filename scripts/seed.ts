@@ -1424,25 +1424,26 @@ async function seedImpl(strapi: Core.Strapi) {
   // We read originals from public/uploads/ and push them through Strapi's
   // upload service, which delegates to the Cloudinary provider configured
   // in config/plugins.ts. This avoids Railway's ephemeral-disk problem.
-  setTimeout(async () => {
-    console.log(`🖼️  Uploading ${imageQueue.length} seed images...`);
-    const imageMap = buildLocalImageMap();
-    if (imageMap.size === 0) {
-      console.log(`  ⚠️  public/uploads/ is empty or missing — skipping image upload.`);
-      return;
-    }
+  //
+  // Runs inline (was previously setTimeout-wrapped) so run-seed.ts can await
+  // it — otherwise app.destroy() fires before the timer and images never link.
+  console.log(`🖼️  Uploading ${imageQueue.length} seed images...`);
+  const imageMap = buildLocalImageMap();
+  if (imageMap.size === 0) {
+    console.log(`  ⚠️  public/uploads/ is empty or missing — skipping image upload.`);
+    return;
+  }
 
-    let success = 0;
-    let failed = 0;
+  let success = 0;
+  let failed = 0;
 
-    for (const item of imageQueue) {
-      const ok = await attachSeedImage(strapi, item.uid, item.documentId, item.name, imageMap);
-      if (ok) success++;
-      else failed++;
-    }
+  for (const item of imageQueue) {
+    const ok = await attachSeedImage(strapi, item.uid, item.documentId, item.name, imageMap);
+    if (ok) success++;
+    else failed++;
+  }
 
-    console.log(`🖼️  Image upload complete: ${success} succeeded, ${failed} failed.`);
-  }, 5000); // Wait 5s for server to fully start before uploading
+  console.log(`🖼️  Image upload complete: ${success} succeeded, ${failed} failed.`);
 }
 
 export default seed;

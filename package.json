@@ -17,6 +17,8 @@
     "predeploy": "npm run check:build && npm run check:types",
     "check:build": "strapi build",
     "check:types": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write .",
@@ -43,6 +45,7 @@
     "styled-components": "^6.4.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
@@ -51,8 +54,10 @@
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "husky": "^9.1.0",
+    "jest": "^30.3.0",
     "lint-staged": "^15.2.0",
     "prettier": "^3.3.0",
+    "ts-jest": "^29.4.9",
     "typescript": "^5"
   },
   "engines": {

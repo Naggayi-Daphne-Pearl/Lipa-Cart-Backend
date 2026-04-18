@@ -10,14 +10,14 @@
  * Via npm:              npm run seed
  */
 
-import strapi from '@strapi/strapi';
+import { createStrapi } from '@strapi/strapi';
 import seed from './seed';
 
 async function main() {
   console.log('[run-seed] Booting Strapi for seeding...');
 
   // load() bootstraps the app (runs RBAC setup) without binding to a port.
-  const app = await (strapi as any)({ distDir: './dist' }).load();
+  const app = await createStrapi({ distDir: './dist' }).load();
 
   console.log('[run-seed] Bootstrap complete. Running seed...');
   await seed(app);

@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { sendOrderStatusUpdateEmail } from './email';
 
 let firebaseApp: admin.app.App | null = null;
 const FANOUT_BATCH_SIZE = 25;
@@ -392,6 +393,12 @@ export async function notifyOrderStatusChange(
 
     // Send push to all registered devices for this user.
     await sendPushToUser(strapi, customerUser, title, body, data);
+
+    // Email status updates for intermediate states.
+    // Payment confirmation and delivery receipt have dedicated richer emails.
+    if (newStatus !== 'payment_confirmed' && newStatus !== 'delivered') {
+      await sendOrderStatusUpdateEmail(strapi, orderId, orderNumber, template.title);
+    }
   } catch (err: any) {
     strapi?.log?.error(
       `[notifications] notifyOrderStatusChange(order=${orderId}, status=${newStatus}) failed: ${err?.message}`,

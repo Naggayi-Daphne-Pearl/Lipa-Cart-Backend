@@ -6,7 +6,7 @@ import { initEmail } from './services/email';
 import { initSms } from './services/sms';
 
 export default {
-  register(/* { strapi }: { strapi: Core.Strapi } */) {
+  register({ strapi }: { strapi: Core.Strapi }) {
     if (process.env.SENTRY_DSN_BACKEND) {
       Sentry.init({
         dsn: process.env.SENTRY_DSN_BACKEND,
@@ -16,6 +16,23 @@ export default {
         sendDefaultPii: true,
       });
     }
+
+    strapi.server.use(async (ctx, next) => {
+      if (ctx.path === '/email/test') {
+        if (ctx.method === 'GET') {
+          ctx.redirect('/api/email/test');
+          return;
+        }
+
+        if (ctx.method === 'POST') {
+          ctx.url = '/api/email/test';
+          await next();
+          return;
+        }
+      }
+
+      await next();
+    });
 
     // Initialize communication services
     initFirebase();

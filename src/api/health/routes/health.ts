@@ -8,5 +8,21 @@ export default {
         auth: false,
       },
     },
+    {
+      method: 'GET',
+      path: '/email/test',
+      handler: 'health.testEmail',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'POST',
+      path: '/email/test',
+      handler: 'health.testEmail',
+      config: {
+        auth: false,
+      },
+    },
   ],
 };

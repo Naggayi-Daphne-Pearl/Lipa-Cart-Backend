@@ -1,6 +1,6 @@
 import type { Core } from '@strapi/strapi';
 import { sendOtpSms, isSmsReady } from '../../../services/sms';
-import { sendEmail, isEmailReady } from '../../../services/email';
+import { sendOtpEmail, isEmailReady } from '../../../services/email';
 
 interface OtpEntry {
   otp: string;
@@ -50,22 +50,7 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // 2. Try email
     if (email && isEmailReady()) {
-      const sent = await sendEmail(
-        email,
-        'Your LipaCart verification code',
-        `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-          <h1 style="color: #15874B; font-size: 24px; margin: 0 0 8px;">LipaCart</h1>
-          <p style="color: #6B6660; margin: 0 0 24px;">Your verification code</p>
-          <div style="background: #F5F2ED; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2D2D2D;">${otp}</span>
-          </div>
-          <p style="color: #6B6660; font-size: 14px; margin: 0;">This code expires in <strong>5 minutes</strong>. If you didn't request this, you can safely ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #EDE9E3; margin: 24px 0;" />
-          <p style="color: #8F8A82; font-size: 12px; text-align: center;">LipaCart — Fresh groceries delivered across East Africa</p>
-        </div>
-        `,
-      );
+      const sent = await sendOtpEmail(email, otp);
       if (sent) return { otp, deliveredVia: 'email' };
       console.warn(`[otp] Email also failed for ${phone}`);
     }

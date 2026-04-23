@@ -1,6 +1,23 @@
 import * as nodemailer from 'nodemailer';
+import type Mail from 'nodemailer/lib/mailer';
 
 let transporter: nodemailer.Transporter | null = null;
+let lastEmailError: string | null = null;
+let transporterVerified = false;
+
+type EmailAttachment = Mail.Attachment;
+
+interface SendEmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  replyTo?: string;
+  attachments?: EmailAttachment[];
+  headers?: Record<string, string>;
+}
+
+const FROM_ADDRESS = process.env.SMTP_FROM || 'LipaCart <noreply@lipacart.com>';
 
 /**
  * Initialize the Nodemailer transporter.
@@ -9,22 +26,54 @@ let transporter: nodemailer.Transporter | null = null;
 export function initEmail(): boolean {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const user = process.env.SMTP_USER?.trim();
+  const rawPass = process.env.SMTP_PASS?.trim();
+  const isGmail = Boolean(host?.includes('gmail.com'));
+  const pass = isGmail ? rawPass?.replace(/[^a-zA-Z0-9]/g, '') : rawPass;
 
   if (!host || !user || !pass) {
     console.warn('[email] SMTP not configured — email notifications disabled');
     return false;
   }
 
+  if (isGmail && pass.length !== 16) {
+    console.warn(
+      `[email] Gmail app password appears unusual (normalized length: ${pass.length}). ` +
+        'Regenerate app password and paste it exactly.',
+    );
+  }
+
   transporter = nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
+    requireTLS: true,
     auth: { user, pass },
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+    tls: {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: process.env.NODE_ENV === 'production',
+    },
   });
 
-  console.log('[email] Nodemailer initialized');
+  transporter.verify().then(
+    () => {
+      transporterVerified = true;
+      lastEmailError = null;
+      console.log('[email] Nodemailer initialized and verified');
+    },
+    (err) => {
+      transporterVerified = false;
+      lastEmailError = err?.message || 'SMTP verification failed';
+      console.warn('[email] Transporter verify failed:', err?.message);
+    },
+  );
+
   return true;
 }
 
@@ -33,24 +82,173 @@ export function isEmailReady(): boolean {
   return transporter !== null;
 }
 
-const FROM_ADDRESS = process.env.SMTP_FROM || 'LipaCart <noreply@lipacart.com>';
+export function getEmailDiagnostics() {
+  return {
+    configured: isEmailReady(),
+    verified: transporterVerified,
+    lastError: lastEmailError,
+  };
+}
+
+function toPlainText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * Send a generic email. Returns true on success.
+ * Supports legacy signature: sendEmail(to, subject, html, text?)
  */
 export async function sendEmail(
   to: string,
   subject: string,
   html: string,
+  text?: string,
+): Promise<boolean>;
+export async function sendEmail(options: SendEmailOptions): Promise<boolean>;
+export async function sendEmail(
+  toOrOptions: string | SendEmailOptions,
+  subject?: string,
+  html?: string,
+  text?: string,
 ): Promise<boolean> {
-  if (!transporter || !to) return false;
+  if (!transporter) return false;
+
+  const payload: SendEmailOptions =
+    typeof toOrOptions === 'string'
+      ? {
+          to: toOrOptions,
+          subject: subject || 'LipaCart Notification',
+          html: html || '',
+          text,
+        }
+      : toOrOptions;
+
+  if (!payload.to) return false;
 
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to, subject, html });
+    await transporter.sendMail({
+      from: FROM_ADDRESS,
+      to: payload.to,
+      replyTo: payload.replyTo,
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text || toPlainText(payload.html),
+      headers: payload.headers,
+      attachments: payload.attachments,
+    });
+    lastEmailError = null;
     return true;
   } catch (err: any) {
-    console.error(`[email] Failed to send to ${to}:`, err?.message);
+    lastEmailError = err?.message || 'Email send failed';
+    console.error(`[email] Failed to send to ${payload.to}:`, err?.message);
     return false;
+  }
+}
+
+function escapePdfText(input: string): string {
+  return input.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+function buildSimpleReceiptPdf(orderNumber: string, total: number): Buffer {
+  const issuedAt = new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
+  const lines = [
+    'LipaCart Receipt',
+    `Order Number: #${orderNumber}`,
+    `Total Paid: UGX ${Number(total || 0).toLocaleString()}`,
+    `Issued At: ${issuedAt}`,
+    'Thank you for shopping with LipaCart.',
+  ];
+
+  let y = 780;
+  const commands = ['BT', '/F1 12 Tf'];
+  for (const line of lines) {
+    commands.push(`50 ${y} Td (${escapePdfText(line)}) Tj`);
+    y -= 24;
+  }
+  commands.push('ET');
+
+  const stream = commands.join('\n');
+  const objects: string[] = [];
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+  objects[3] =
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>';
+  objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  objects[5] = `<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}\nendstream`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+
+  for (let i = 1; i <= 5; i++) {
+    offsets[i] = Buffer.byteLength(pdf, 'utf8');
+    pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefStart = Buffer.byteLength(pdf, 'utf8');
+  pdf += `xref\n0 6\n0000000000 65535 f \n`;
+  for (let i = 1; i <= 5; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return Buffer.from(pdf, 'utf8');
+}
+
+export async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
+  return sendEmail({
+    to,
+    subject: 'Your LipaCart verification code',
+    text: `Your LipaCart OTP is ${otp}. It expires in 5 minutes. Do not share this code.`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <h1 style="color: #15874B; font-size: 24px; margin: 0 0 8px;">LipaCart</h1>
+        <p style="color: #6B6660; margin: 0 0 24px;">Your verification code</p>
+        <div style="background: #F5F2ED; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
+          <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2D2D2D;">${otp}</span>
+        </div>
+        <p style="color: #6B6660; font-size: 14px; margin: 0;">This code expires in <strong>5 minutes</strong>. If you didn't request this, you can safely ignore this email.</p>
+      </div>
+    `,
+    headers: {
+      'X-Auto-Response-Suppress': 'All',
+      'X-Entity-Ref-ID': `otp-${Date.now()}`,
+    },
+  });
+}
+
+export async function sendOrderStatusUpdateEmail(
+  strapi: any,
+  orderId: number,
+  orderNumber: string,
+  statusLabel: string,
+): Promise<void> {
+  if (!isEmailReady()) return;
+
+  try {
+    const customerEmail = await _getCustomerEmail(strapi, orderId);
+    if (!customerEmail) return;
+
+    await sendEmail({
+      to: customerEmail,
+      subject: `Order Update — #${orderNumber}`,
+      text: `Your order #${orderNumber} status is now: ${statusLabel}.`,
+      html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h1 style="color: #15874B; font-size: 24px; margin: 0 0 8px;">LipaCart</h1>
+        <p style="color: #6B6660; margin: 0 0 24px;">Order update for <strong>#${orderNumber}</strong></p>
+        <div style="background: #F5F2ED; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <p style="color: #2D2D2D; margin: 0;">Current status: <strong>${statusLabel}</strong></p>
+        </div>
+        <p style="color: #6B6660; font-size: 14px;">You can track this order in the LipaCart app.</p>
+      </div>
+      `,
+    });
+  } catch (err: any) {
+    console.error('[email] sendOrderStatusUpdateEmail error:', err?.message);
   }
 }
 
@@ -133,11 +331,13 @@ export async function sendDeliveryReceiptEmail(
 
     const total = order?.total ?? 0;
     const formattedTotal = `UGX ${Number(total).toLocaleString()}`;
+    const receiptPdf = buildSimpleReceiptPdf(orderNumber, total);
 
-    await sendEmail(
-      customerEmail,
-      `Order Delivered — #${orderNumber}`,
-      `
+    await sendEmail({
+      to: customerEmail,
+      subject: `Order Delivered — #${orderNumber}`,
+      text: `Your order #${orderNumber} has been delivered. Total paid: ${formattedTotal}. Your receipt is attached as PDF.`,
+      html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
         <div style="text-align: center; margin-bottom: 24px;">
           <h1 style="color: #15874B; font-size: 24px; margin: 0;">LipaCart</h1>
@@ -162,7 +362,14 @@ export async function sendDeliveryReceiptEmail(
         <p style="color: #8F8A82; font-size: 12px; text-align: center;">LipaCart — Delivering fresh groceries across East Africa</p>
       </div>
       `,
-    );
+      attachments: [
+        {
+          filename: `receipt-${orderNumber}.pdf`,
+          content: receiptPdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
   } catch (err: any) {
     console.error('[email] sendDeliveryReceiptEmail error:', err?.message);
   }

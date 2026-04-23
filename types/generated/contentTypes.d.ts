@@ -458,6 +458,49 @@ export interface ApiAdminUserAdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAreaWaitlistAreaWaitlist extends Struct.CollectionTypeSchema {
+  collectionName: 'area_waitlists';
+  info: {
+    description: 'Customers waiting for service in their area';
+    displayName: 'Area Waitlist';
+    pluralName: 'area-waitlists';
+    singularName: 'area-waitlist';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    area_count: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    area_name: Schema.Attribute.String & Schema.Attribute.Required;
+    area_priority: Schema.Attribute.Enumeration<['high', 'medium', 'low']> &
+      Schema.Attribute.DefaultTo<'medium'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+    customer: Schema.Attribute.Relation<'manyToOne', 'api::customer.customer'>;
+    email: Schema.Attribute.Email;
+    latitude: Schema.Attribute.Decimal;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::area-waitlist.area-waitlist'> &
+      Schema.Attribute.Private;
+    longitude: Schema.Attribute.Decimal;
+    notes: Schema.Attribute.Text;
+    notification_sent_at: Schema.Attribute.DateTime;
+    phone_number: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    region: Schema.Attribute.Enumeration<
+      ['kampala', 'entebbe', 'wakiso', 'KCC', 'nairobi', 'kisumu', 'mombasa', 'other']
+    > &
+      Schema.Attribute.Required;
+    status: Schema.Attribute.Enumeration<
+      ['waitlisted', 'notified', 'service_started', 'inactive']
+    > &
+      Schema.Attribute.DefaultTo<'waitlisted'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<'manyToOne', 'api::user.user'>;
+  };
+}
+
 export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
   collectionName: 'categories';
   info: {
@@ -545,7 +588,15 @@ export interface ApiNotificationNotification extends Struct.CollectionTypeSchema
     publishedAt: Schema.Attribute.DateTime;
     title: Schema.Attribute.String & Schema.Attribute.Required;
     type: Schema.Attribute.Enumeration<
-      ['order_status', 'new_task', 'new_delivery', 'promo', 'system']
+      [
+        'order_status',
+        'new_task',
+        'new_delivery',
+        'substitute_suggestion',
+        'substitute_response',
+        'promo',
+        'system',
+      ]
     > &
       Schema.Attribute.DefaultTo<'order_status'>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1045,6 +1096,7 @@ export interface ApiUserUser extends Struct.CollectionTypeSchema {
     customer: Schema.Attribute.Relation<'oneToOne', 'api::customer.customer'>;
     email: Schema.Attribute.Email;
     fcm_token: Schema.Attribute.Text;
+    fcm_tokens: Schema.Attribute.JSON;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::user.user'> &
@@ -1499,6 +1551,7 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::address.address': ApiAddressAddress;
       'api::admin-user.admin-user': ApiAdminUserAdminUser;
+      'api::area-waitlist.area-waitlist': ApiAreaWaitlistAreaWaitlist;
       'api::category.category': ApiCategoryCategory;
       'api::customer.customer': ApiCustomerCustomer;
       'api::notification.notification': ApiNotificationNotification;

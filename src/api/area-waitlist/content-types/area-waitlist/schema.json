@@ -1,0 +1,74 @@
+{
+  "kind": "collectionType",
+  "collectionName": "area_waitlists",
+  "info": {
+    "singularName": "area-waitlist",
+    "pluralName": "area-waitlists",
+    "displayName": "Area Waitlist",
+    "description": "Customers waiting for service in their area"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "customer": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::customer.customer"
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user"
+    },
+    "area_name": {
+      "type": "string",
+      "required": true
+    },
+    "region": {
+      "type": "enumeration",
+      "enum": ["kampala", "entebbe", "wakiso", "KCC", "nairobi", "kisumu", "mombasa", "other"],
+      "required": true
+    },
+    "latitude": {
+      "type": "decimal",
+      "precision": 10,
+      "scale": 8
+    },
+    "longitude": {
+      "type": "decimal",
+      "precision": 11,
+      "scale": 8
+    },
+    "phone_number": {
+      "type": "string"
+    },
+    "email": {
+      "type": "email"
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["waitlisted", "notified", "service_started", "inactive"],
+      "default": "waitlisted"
+    },
+    "area_priority": {
+      "type": "enumeration",
+      "enum": ["high", "medium", "low"],
+      "default": "medium"
+    },
+    "area_count": {
+      "type": "integer",
+      "default": 1
+    },
+    "notification_sent_at": {
+      "type": "datetime"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "createdAt": {
+      "type": "datetime"
+    }
+  }
+}

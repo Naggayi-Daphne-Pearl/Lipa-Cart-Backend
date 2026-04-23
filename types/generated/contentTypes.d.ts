@@ -545,7 +545,15 @@ export interface ApiNotificationNotification extends Struct.CollectionTypeSchema
     publishedAt: Schema.Attribute.DateTime;
     title: Schema.Attribute.String & Schema.Attribute.Required;
     type: Schema.Attribute.Enumeration<
-      ['order_status', 'new_task', 'new_delivery', 'promo', 'system']
+      [
+        'order_status',
+        'new_task',
+        'new_delivery',
+        'substitute_suggestion',
+        'substitute_response',
+        'promo',
+        'system',
+      ]
     > &
       Schema.Attribute.DefaultTo<'order_status'>;
     updatedAt: Schema.Attribute.DateTime;
@@ -1045,6 +1053,7 @@ export interface ApiUserUser extends Struct.CollectionTypeSchema {
     customer: Schema.Attribute.Relation<'oneToOne', 'api::customer.customer'>;
     email: Schema.Attribute.Email;
     fcm_token: Schema.Attribute.Text;
+    fcm_tokens: Schema.Attribute.JSON;
     is_active: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::user.user'> &

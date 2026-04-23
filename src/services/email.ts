@@ -220,6 +220,72 @@ export async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
   });
 }
 
+export async function sendForgotPasswordOtpEmail(to: string, otp: string): Promise<boolean> {
+  return sendEmail({
+    to,
+    subject: 'Reset your LipaCart password',
+    replyTo: 'support@lipacart.com',
+    text: `We received a request to reset your LipaCart password. Your verification code is: ${otp}. This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 0; background: #FFFFFF;">
+        <!-- Header with gradient -->
+        <div style="background: linear-gradient(135deg, #15874B 0%, #0F6238 100%); padding: 40px 24px; text-align: center;">
+          <h1 style="color: #FFFFFF; font-size: 28px; margin: 0; font-weight: 700;">LipaCart</h1>
+          <p style="color: rgba(255, 255, 255, 0.9); margin: 8px 0 0 0; font-size: 14px;">Password Reset Request</p>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 32px 24px;">
+          <p style="color: #2D2D2D; font-size: 14px; margin: 0 0 8px 0;">Hi,</p>
+          <p style="color: #5A5A5A; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">We received a request to reset the password for your LipaCart account. Use the verification code below to proceed with resetting your password.</p>
+
+          <!-- OTP Box with border -->
+          <div style="background: #F5F2ED; border: 2px solid #15874B; border-radius: 8px; padding: 24px; text-align: center; margin: 32px 0;">
+            <p style="color: #6B6660; font-size: 12px; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Your verification code</p>
+            <div style="background: #FFFFFF; border-radius: 6px; padding: 16px; margin-bottom: 12px;">
+              <span style="font-size: 36px; font-weight: 700; letter-spacing: 6px; color: #15874B; font-family: 'Courier New', monospace;">${otp}</span>
+            </div>
+            <p style="color: #6B6660; font-size: 12px; margin: 0;">Expires in <strong>5 minutes</strong></p>
+          </div>
+
+          <p style="color: #5A5A5A; font-size: 14px; line-height: 1.6; margin: 24px 0;">
+            <strong style="color: #2D2D2D;">Didn't request this?</strong><br>
+            If you didn't ask to reset your password, you can safely ignore this email. Your account remains secure.
+          </p>
+
+          <!-- Security notice -->
+          <div style="background: #FFF9E6; border-left: 4px solid #F59E0B; padding: 12px 16px; margin: 24px 0; border-radius: 4px;">
+            <p style="color: #92400E; font-size: 12px; margin: 0; line-height: 1.5;">
+              <strong>🔒 Security tip:</strong> Never share your verification code with anyone. LipaCart staff will never ask for it.
+            </p>
+          </div>
+
+          <!-- Support section -->
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;">
+          <div style="text-align: center;">
+            <p style="color: #6B6660; font-size: 12px; margin: 0 0 8px 0;">Need help? We're here to assist.</p>
+            <a href="mailto:support@lipacart.com" style="color: #15874B; text-decoration: none; font-size: 12px; font-weight: 600;">support@lipacart.com</a>
+          </div>
+
+          <!-- Footer -->
+          <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #E5E7EB; text-align: center;">
+            <p style="color: #9CA3AF; font-size: 11px; margin: 0 0 8px 0;">
+              © ${new Date().getFullYear()} LipaCart. Delivering groceries, delivering happiness.
+            </p>
+            <p style="color: #D1D5DB; font-size: 10px; margin: 0;">
+              This is an automated message. Please do not reply to this email.
+            </p>
+          </div>
+        </div>
+      </div>
+    `,
+    headers: {
+      'X-Auto-Response-Suppress': 'All',
+      'X-Entity-Ref-ID': `forgot-pw-${Date.now()}`,
+    },
+  });
+}
+
 export async function sendOrderStatusUpdateEmail(
   strapi: any,
   orderId: number,

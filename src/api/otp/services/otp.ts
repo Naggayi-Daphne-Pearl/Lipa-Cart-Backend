@@ -1,10 +1,12 @@
 import type { Core } from '@strapi/strapi';
 import { sendOtpSms, isSmsReady } from '../../../services/sms';
-import { sendOtpEmail, isEmailReady } from '../../../services/email';
+import { sendOtpEmail, sendForgotPasswordOtpEmail, isEmailReady } from '../../../services/email';
 
 interface OtpEntry {
   otp: string;
   expiresAt: Date;
+  createdAt: Date;
+  [key: string]: any; // Allow storing attempt counters and other metadata
 }
 
 /**
@@ -30,16 +32,18 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
   async generateOtp(
     phone: string,
     email?: string | null,
+    template: 'login' | 'forgot-password' = 'login',
   ): Promise<{ otp: string; deliveredVia: 'sms' | 'email' | 'console' }> {
     // Generate 6-digit random OTP
     const otp = String(Math.floor(100000 + Math.random() * 900000));
 
     // Set 5-minute expiry
+    const createdAt = new Date();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
-    // Store in memory
-    this.otpStore.set(phone, { otp, expiresAt });
+    // Store in memory with creation timestamp
+    this.otpStore.set(phone, { otp, expiresAt, createdAt });
 
     // 1. Try SMS
     if (isSmsReady()) {
@@ -50,7 +54,9 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
 
     // 2. Try email
     if (email && isEmailReady()) {
-      const sent = await sendOtpEmail(email, otp);
+      const emailSender =
+        template === 'forgot-password' ? sendForgotPasswordOtpEmail : sendOtpEmail;
+      const sent = await emailSender(email, otp);
       if (sent) return { otp, deliveredVia: 'email' };
       console.warn(`[otp] Email also failed for ${phone}`);
     }
@@ -104,5 +110,30 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     if (removed > 0) {
       // Expired OTP entries cleaned up
     }
+  },
+
+  /**
+   * Get OTP entry without verification
+   * Used for checking expiry and attempt tracking
+   */
+  getOtp(phone: string): OtpEntry | null {
+    const entry = this.otpStore.get(phone);
+    if (!entry) return null;
+
+    const now = new Date();
+    if (now > entry.expiresAt) {
+      this.otpStore.delete(phone);
+      return null;
+    }
+
+    return entry;
+  },
+
+  /**
+   * Clear a specific OTP entry
+   * Used after successful password reset
+   */
+  clearOtp(phone: string): void {
+    this.otpStore.delete(phone);
   },
 });

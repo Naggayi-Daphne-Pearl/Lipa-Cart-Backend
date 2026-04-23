@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { sendKycApprovedLoginEmail } from '../../../services/email';
 
 export default factories.createCoreController('api::shopper.shopper', ({ strapi }) => ({
   /**
@@ -16,7 +17,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       let user;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        user = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({ where: { id: payload.id } });
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
       }
@@ -25,10 +28,16 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       }
 
       const {
-        id_number, id_photo_url, face_photo_url,
-        mobile_money_provider, mobile_money_number,
-        bank_name, bank_account_name, bank_account_number,
-        emergency_contact_name, emergency_contact_phone,
+        id_number,
+        id_photo_url,
+        face_photo_url,
+        mobile_money_provider,
+        mobile_money_number,
+        bank_name,
+        bank_account_name,
+        bank_account_number,
+        emergency_contact_name,
+        emergency_contact_phone,
       } = ctx.request.body;
 
       // Validate required fields
@@ -50,7 +59,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       }
 
       if (!customUser || customUser.user_type !== 'shopper') {
-        return ctx.forbidden(`Only shoppers can submit KYC. User type: ${customUser?.user_type || 'not found'}`);
+        return ctx.forbidden(
+          `Only shoppers can submit KYC. User type: ${customUser?.user_type || 'not found'}`,
+        );
       }
 
       // Find shopper record via the link table (Strapi v5 uses shoppers_user_lnk)
@@ -59,7 +70,7 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         // Query the link table directly to find the shopper_id for this user
         const linkResult: any = await strapi.db.connection.raw(
           `SELECT shopper_id FROM shoppers_user_lnk WHERE user_id = ?`,
-          [customUser.id]
+          [customUser.id],
         );
         const rows = linkResult?.rows || linkResult;
         if (rows && rows.length > 0) {
@@ -68,8 +79,7 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
             where: { id: shopperId },
           });
         }
-      } catch (linkErr: any) {
-      }
+      } catch (linkErr: any) {}
 
       // Fallback: query all shoppers with populate and match
       if (!shopper) {
@@ -77,9 +87,8 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           populate: ['user'],
           limit: 200,
         });
-        shopper = allShoppers.find((s: any) =>
-          s.user?.id === customUser.id ||
-          s.user?.documentId === customUser.documentId
+        shopper = allShoppers.find(
+          (s: any) => s.user?.id === customUser.id || s.user?.documentId === customUser.documentId,
         );
       }
 
@@ -95,7 +104,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           shopper = newShopper;
         } catch (createErr: any) {
           console.error('KYC submit - failed to create shopper:', createErr?.message || createErr);
-          return ctx.badRequest(`Failed to create shopper profile: ${createErr?.message || 'Unknown error'}`);
+          return ctx.badRequest(
+            `Failed to create shopper profile: ${createErr?.message || 'Unknown error'}`,
+          );
         }
       }
 
@@ -149,7 +160,10 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
             },
           };
         } catch (fallbackErr: any) {
-          console.error('KYC submit - fallback update also failed:', fallbackErr?.message || fallbackErr);
+          console.error(
+            'KYC submit - fallback update also failed:',
+            fallbackErr?.message || fallbackErr,
+          );
           return ctx.badRequest(`Failed to update KYC: ${fallbackErr?.message || 'Unknown error'}`);
         }
       }
@@ -174,7 +188,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       let reviewUser: any;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        reviewUser = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        reviewUser = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({ where: { id: payload.id } });
         if (!reviewUser) {
           return ctx.unauthorized('Authentication required');
         }
@@ -201,6 +217,7 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       // Find shopper by documentId or id
       const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
         where: { documentId: id },
+        populate: ['user'],
       });
 
       if (!shopper) {
@@ -220,6 +237,18 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       const updated = await strapi.entityService.update('api::shopper.shopper', shopper.id, {
         data: updateData,
       });
+
+      if (action === 'approve' && shopper.user?.email) {
+        try {
+          await sendKycApprovedLoginEmail(shopper.user.email, 'shopper', {
+            name: shopper.user.name,
+          });
+        } catch (emailErr: any) {
+          strapi.log.warn(
+            `[shopper.kyc] Approval email failed for shopper ${shopper.id}: ${emailErr?.message || emailErr}`,
+          );
+        }
+      }
 
       ctx.body = {
         data: {

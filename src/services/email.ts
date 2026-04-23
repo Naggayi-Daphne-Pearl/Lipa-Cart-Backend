@@ -4,6 +4,7 @@ import type Mail from 'nodemailer/lib/mailer';
 let transporter: nodemailer.Transporter | null = null;
 let lastEmailError: string | null = null;
 let transporterVerified = false;
+let emailTemporarilyDisabledUntil = 0;
 
 type EmailAttachment = Mail.Attachment;
 
@@ -20,6 +21,10 @@ interface SendEmailOptions {
 const FROM_ADDRESS = process.env.SMTP_FROM || 'LipaCart <noreply@lipacart.com>';
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@lipacart.com';
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://www.lipacart.com').replace(/\/+$/, '');
+const SMTP_CONNECTION_TIMEOUT_MS = parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '3000', 10);
+const SMTP_GREETING_TIMEOUT_MS = parseInt(process.env.SMTP_GREETING_TIMEOUT_MS || '3000', 10);
+const SMTP_SOCKET_TIMEOUT_MS = parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS || '8000', 10);
+const SMTP_FAILURE_BACKOFF_MS = parseInt(process.env.SMTP_FAILURE_BACKOFF_MS || '120000', 10);
 const PLAY_STORE_URL = process.env.PLAY_STORE_URL?.trim();
 const APP_STORE_URL = process.env.APP_STORE_URL?.trim();
 const INSTAGRAM_URL = process.env.INSTAGRAM_URL?.trim();
@@ -44,6 +49,10 @@ const FORGOT_PASSWORD_LOGO_SVG = `
 interface ForgotPasswordEmailOptions {
   name?: string | null;
   resetUrl?: string | null;
+}
+
+interface ApprovalEmailOptions {
+  name?: string | null;
 }
 
 /**
@@ -79,9 +88,9 @@ export function initEmail(): boolean {
     pool: true,
     maxConnections: 5,
     maxMessages: 100,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 20_000,
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
     tls: {
       minVersion: 'TLSv1.2',
       rejectUnauthorized: process.env.NODE_ENV === 'production',
@@ -123,6 +132,17 @@ function toPlainText(html: string): string {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isTimeoutLikeError(err: any): boolean {
+  const code = String(err?.code || '').toUpperCase();
+  const message = String(err?.message || '').toLowerCase();
+  return (
+    code.includes('TIMEOUT') ||
+    code === 'ESOCKET' ||
+    code === 'ECONNECTION' ||
+    message.includes('timeout')
+  );
 }
 
 function escapeHtml(value: string): string {
@@ -216,6 +236,10 @@ export async function sendEmail(
 ): Promise<boolean> {
   if (!transporter) return false;
 
+  if (Date.now() < emailTemporarilyDisabledUntil) {
+    return false;
+  }
+
   const payload: SendEmailOptions =
     typeof toOrOptions === 'string'
       ? {
@@ -240,9 +264,16 @@ export async function sendEmail(
       attachments: payload.attachments,
     });
     lastEmailError = null;
+    emailTemporarilyDisabledUntil = 0;
     return true;
   } catch (err: any) {
     lastEmailError = err?.message || 'Email send failed';
+    if (isTimeoutLikeError(err)) {
+      emailTemporarilyDisabledUntil = Date.now() + SMTP_FAILURE_BACKOFF_MS;
+      console.warn(
+        `[email] SMTP temporarily disabled for ${Math.ceil(SMTP_FAILURE_BACKOFF_MS / 1000)}s after timeout`,
+      );
+    }
     console.error(`[email] Failed to send to ${payload.to}:`, err?.message);
     return false;
   }
@@ -420,6 +451,46 @@ export async function sendForgotPasswordOtpEmail(
     headers: {
       'X-Auto-Response-Suppress': 'All',
       'X-Entity-Ref-ID': `forgot-pw-${Date.now()}`,
+    },
+  });
+}
+
+export async function sendKycApprovedLoginEmail(
+  to: string,
+  role: 'shopper' | 'rider',
+  options: ApprovalEmailOptions = {},
+): Promise<boolean> {
+  const greetingName = options.name?.trim() ? escapeHtml(options.name.trim().split(' ')[0]) : '';
+  const greeting = greetingName ? `Hi ${greetingName},` : 'Hi there,';
+  const roleLabel = role === 'shopper' ? 'shopper' : 'rider';
+  const loginUrl = `${FRONTEND_URL}/login`;
+
+  return sendEmail({
+    to,
+    subject: 'Your LipaCart account is approved',
+    replyTo: SUPPORT_EMAIL,
+    text:
+      `${greeting.replace(/<[^>]*>/g, '')} Your ${roleLabel} account has been approved. ` +
+      `Please log in to start using LipaCart: ${loginUrl}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">
+        <h1 style="color: #15874B; font-size: 24px; margin: 0 0 8px;">LipaCart</h1>
+        <p style="color: #6B6660; margin: 0 0 24px;">${greeting}</p>
+        <div style="background: #F5F2ED; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+          <p style="color: #2D2D2D; margin: 0 0 8px; font-weight: 600;">You're approved</p>
+          <p style="color: #6B6660; margin: 0; line-height: 1.6;">
+            Your ${roleLabel} account has been reviewed and approved. You can now log in and start working in the app.
+          </p>
+        </div>
+        <div style="margin-bottom: 20px;">
+          <a href="${loginUrl}" style="display: inline-block; padding: 12px 20px; border-radius: 999px; text-decoration: none; background: #15874B; color: #FFFFFF; font-weight: 700;">Log In to LipaCart</a>
+        </div>
+        <p style="color: #8F8A82; font-size: 12px;">Need help? Contact <a href="mailto:${SUPPORT_EMAIL}" style="color: #15874B;">${SUPPORT_EMAIL}</a></p>
+      </div>
+    `,
+    headers: {
+      'X-Auto-Response-Suppress': 'All',
+      'X-Entity-Ref-ID': `kyc-approved-${role}-${Date.now()}`,
     },
   });
 }

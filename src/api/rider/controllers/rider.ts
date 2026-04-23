@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { sendKycApprovedLoginEmail } from '../../../services/email';
 
 export default factories.createCoreController('api::rider.rider', ({ strapi }) => ({
   /**
@@ -16,7 +17,9 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       let user;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        user = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        user = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({ where: { id: payload.id } });
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
       }
@@ -25,12 +28,21 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       }
 
       const {
-        id_number, id_photo_url, face_photo_url,
-        vehicle_type, vehicle_make, vehicle_plate,
-        license_number, license_photo_url,
-        mobile_money_provider, mobile_money_number,
-        bank_name, bank_account_name, bank_account_number,
-        emergency_contact_name, emergency_contact_phone,
+        id_number,
+        id_photo_url,
+        face_photo_url,
+        vehicle_type,
+        vehicle_make,
+        vehicle_plate,
+        license_number,
+        license_photo_url,
+        mobile_money_provider,
+        mobile_money_number,
+        bank_name,
+        bank_account_name,
+        bank_account_number,
+        emergency_contact_name,
+        emergency_contact_phone,
       } = ctx.request.body;
 
       // Validate required fields
@@ -54,7 +66,9 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       }
 
       if (!customUser || customUser.user_type !== 'rider') {
-        return ctx.forbidden(`Only riders can submit rider KYC. User type: ${customUser?.user_type || 'not found'}`);
+        return ctx.forbidden(
+          `Only riders can submit rider KYC. User type: ${customUser?.user_type || 'not found'}`,
+        );
       }
 
       // Find rider record via link table
@@ -62,7 +76,7 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       try {
         const linkResult: any = await strapi.db.connection.raw(
           `SELECT rider_id FROM riders_user_lnk WHERE user_id = ?`,
-          [customUser.id]
+          [customUser.id],
         );
         const rows = linkResult?.rows || linkResult;
         if (rows && rows.length > 0) {
@@ -70,8 +84,7 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
             where: { id: rows[0].rider_id },
           });
         }
-      } catch (linkErr: any) {
-      }
+      } catch (linkErr: any) {}
 
       // Fallback: populate and match
       if (!rider) {
@@ -79,9 +92,8 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
           populate: ['user'],
           limit: 200,
         });
-        rider = allRiders.find((r: any) =>
-          r.user?.id === customUser.id ||
-          r.user?.documentId === customUser.documentId
+        rider = allRiders.find(
+          (r: any) => r.user?.id === customUser.id || r.user?.documentId === customUser.documentId,
         );
       }
 
@@ -177,7 +189,9 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       let reviewUser: any;
       try {
         const payload = await strapi.plugins['users-permissions'].services.jwt.verify(token);
-        reviewUser = await strapi.query('plugin::users-permissions.user').findOne({ where: { id: payload.id } });
+        reviewUser = await strapi
+          .query('plugin::users-permissions.user')
+          .findOne({ where: { id: payload.id } });
         if (!reviewUser) return ctx.unauthorized('Authentication required');
       } catch (err) {
         return ctx.unauthorized('Invalid or expired token');
@@ -201,6 +215,7 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
 
       const rider: any = await strapi.db.query('api::rider.rider').findOne({
         where: { documentId: id },
+        populate: ['user'],
       });
 
       if (!rider) {
@@ -219,6 +234,18 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       const updated = await strapi.entityService.update('api::rider.rider', rider.id, {
         data: updateData,
       });
+
+      if (action === 'approve' && rider.user?.email) {
+        try {
+          await sendKycApprovedLoginEmail(rider.user.email, 'rider', {
+            name: rider.user.name,
+          });
+        } catch (emailErr: any) {
+          strapi.log.warn(
+            `[rider.kyc] Approval email failed for rider ${rider.id}: ${emailErr?.message || emailErr}`,
+          );
+        }
+      }
 
       ctx.body = {
         data: {

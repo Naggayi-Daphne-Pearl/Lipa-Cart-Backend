@@ -1122,16 +1122,15 @@ export default {
       });
 
       if (!authUser) {
-        // Security: Don't reveal which accounts exist (prevent user enumeration)
         return ctx.badRequest(
-          'If an account exists with this identifier, you will receive a verification code',
+          phone ? 'No account found with this phone number' : 'No email found. Please sign up',
         );
       }
 
       // Edge case 5: Check if user account is active
       const customUser: any = await strapi.db.query('api::user.user').findOne({
         where: phone ? { phone } : { email },
-        select: ['email', 'phone', 'is_active'],
+        select: ['email', 'phone', 'is_active', 'name'],
       });
 
       if (customUser && customUser.is_active === false) {
@@ -1170,6 +1169,14 @@ export default {
       }
 
       const deliveryEmail = customUser?.email || authUser?.email || email;
+      const frontendUrl = (process.env.FRONTEND_URL || 'https://www.lipacart.com').replace(
+        /\/+$/,
+        '',
+      );
+      const resetUrl = new URL('/forgot-password', frontendUrl);
+      if (deliveryEmail) {
+        resetUrl.searchParams.set('email', deliveryEmail.toLowerCase());
+      }
 
       // Edge case 9: Email channel requires valid delivery email
       if (email && !deliveryEmail) {
@@ -1184,6 +1191,10 @@ export default {
         otpChannelKey,
         deliveryEmail,
         'forgot-password',
+        {
+          name: customUser?.name || null,
+          resetUrl: resetUrl.toString(),
+        },
       );
 
       // Edge case 10: Ensure OTP was delivered successfully

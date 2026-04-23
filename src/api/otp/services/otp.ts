@@ -2,6 +2,11 @@ import type { Core } from '@strapi/strapi';
 import { sendOtpSms, isSmsReady } from '../../../services/sms';
 import { sendOtpEmail, sendForgotPasswordOtpEmail, isEmailReady } from '../../../services/email';
 
+interface ForgotPasswordTemplateData {
+  name?: string | null;
+  resetUrl?: string | null;
+}
+
 interface OtpEntry {
   otp: string;
   expiresAt: Date;
@@ -30,9 +35,10 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
    * where to look for the code.
    */
   async generateOtp(
-    phone: string,
+    channelKey: string,
     email?: string | null,
     template: 'login' | 'forgot-password' = 'login',
+    templateData?: ForgotPasswordTemplateData,
   ): Promise<{ otp: string; deliveredVia: 'sms' | 'email' | 'console' }> {
     // Generate 6-digit random OTP
     const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -43,26 +49,29 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
     // Store in memory with creation timestamp
-    this.otpStore.set(phone, { otp, expiresAt, createdAt });
+    this.otpStore.set(channelKey, { otp, expiresAt, createdAt });
+
+    const canSendSms = /^\+256\d{9}$/.test(channelKey);
 
     // 1. Try SMS
-    if (isSmsReady()) {
-      const sent = await sendOtpSms(phone, otp);
+    if (canSendSms && isSmsReady()) {
+      const sent = await sendOtpSms(channelKey, otp);
       if (sent) return { otp, deliveredVia: 'sms' };
-      console.warn(`[otp] SMS failed for ${phone}, trying email fallback`);
+      console.warn(`[otp] SMS failed for ${channelKey}, trying email fallback`);
     }
 
     // 2. Try email
     if (email && isEmailReady()) {
-      const emailSender =
-        template === 'forgot-password' ? sendForgotPasswordOtpEmail : sendOtpEmail;
-      const sent = await emailSender(email, otp);
+      const sent =
+        template === 'forgot-password'
+          ? await sendForgotPasswordOtpEmail(email, otp, templateData)
+          : await sendOtpEmail(email, otp);
       if (sent) return { otp, deliveredVia: 'email' };
-      console.warn(`[otp] Email also failed for ${phone}`);
+      console.warn(`[otp] Email also failed for ${channelKey}`);
     }
 
     // 3. Console fallback (demo mode)
-    console.log(`[otp] Demo mode — OTP for ${phone}: ${otp}`);
+    console.log(`[otp] Demo mode — OTP for ${channelKey}: ${otp}`);
     return { otp, deliveredVia: 'console' };
   },
 

@@ -1,10 +1,17 @@
 import type { Core } from '@strapi/strapi';
 import { sendOtpSms, isSmsReady } from '../../../services/sms';
-import { sendEmail, isEmailReady } from '../../../services/email';
+import { sendOtpEmail, sendForgotPasswordOtpEmail, isEmailReady } from '../../../services/email';
+
+interface ForgotPasswordTemplateData {
+  name?: string | null;
+  resetUrl?: string | null;
+}
 
 interface OtpEntry {
   otp: string;
   expiresAt: Date;
+  createdAt: Date;
+  [key: string]: any; // Allow storing attempt counters and other metadata
 }
 
 /**
@@ -28,50 +35,43 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
    * where to look for the code.
    */
   async generateOtp(
-    phone: string,
+    channelKey: string,
     email?: string | null,
+    template: 'login' | 'forgot-password' = 'login',
+    templateData?: ForgotPasswordTemplateData,
   ): Promise<{ otp: string; deliveredVia: 'sms' | 'email' | 'console' }> {
     // Generate 6-digit random OTP
     const otp = String(Math.floor(100000 + Math.random() * 900000));
 
     // Set 5-minute expiry
+    const createdAt = new Date();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 5);
 
-    // Store in memory
-    this.otpStore.set(phone, { otp, expiresAt });
+    // Store in memory with creation timestamp
+    this.otpStore.set(channelKey, { otp, expiresAt, createdAt });
+
+    const canSendSms = /^\+256\d{9}$/.test(channelKey);
 
     // 1. Try SMS
-    if (isSmsReady()) {
-      const sent = await sendOtpSms(phone, otp);
+    if (canSendSms && isSmsReady()) {
+      const sent = await sendOtpSms(channelKey, otp);
       if (sent) return { otp, deliveredVia: 'sms' };
-      console.warn(`[otp] SMS failed for ${phone}, trying email fallback`);
+      console.warn(`[otp] SMS failed for ${channelKey}, trying email fallback`);
     }
 
     // 2. Try email
     if (email && isEmailReady()) {
-      const sent = await sendEmail(
-        email,
-        'Your LipaCart verification code',
-        `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-          <h1 style="color: #15874B; font-size: 24px; margin: 0 0 8px;">LipaCart</h1>
-          <p style="color: #6B6660; margin: 0 0 24px;">Your verification code</p>
-          <div style="background: #F5F2ED; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2D2D2D;">${otp}</span>
-          </div>
-          <p style="color: #6B6660; font-size: 14px; margin: 0;">This code expires in <strong>5 minutes</strong>. If you didn't request this, you can safely ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #EDE9E3; margin: 24px 0;" />
-          <p style="color: #8F8A82; font-size: 12px; text-align: center;">LipaCart — Fresh groceries delivered across East Africa</p>
-        </div>
-        `,
-      );
+      const sent =
+        template === 'forgot-password'
+          ? await sendForgotPasswordOtpEmail(email, otp, templateData)
+          : await sendOtpEmail(email, otp);
       if (sent) return { otp, deliveredVia: 'email' };
-      console.warn(`[otp] Email also failed for ${phone}`);
+      console.warn(`[otp] Email also failed for ${channelKey}`);
     }
 
     // 3. Console fallback (demo mode)
-    console.log(`[otp] Demo mode — OTP for ${phone}: ${otp}`);
+    console.log(`[otp] Demo mode — OTP for ${channelKey}: ${otp}`);
     return { otp, deliveredVia: 'console' };
   },
 
@@ -119,5 +119,30 @@ export default ({ strapi }: { strapi: Core.Strapi }) => ({
     if (removed > 0) {
       // Expired OTP entries cleaned up
     }
+  },
+
+  /**
+   * Get OTP entry without verification
+   * Used for checking expiry and attempt tracking
+   */
+  getOtp(phone: string): OtpEntry | null {
+    const entry = this.otpStore.get(phone);
+    if (!entry) return null;
+
+    const now = new Date();
+    if (now > entry.expiresAt) {
+      this.otpStore.delete(phone);
+      return null;
+    }
+
+    return entry;
+  },
+
+  /**
+   * Clear a specific OTP entry
+   * Used after successful password reset
+   */
+  clearOtp(phone: string): void {
+    this.otpStore.delete(phone);
   },
 });

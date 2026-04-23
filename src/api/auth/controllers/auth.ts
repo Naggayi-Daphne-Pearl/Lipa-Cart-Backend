@@ -1084,41 +1084,48 @@ export default {
    */
   async forgotPassword(ctx: any) {
     try {
-      const { phone } = ctx.request.body;
+      const phone = String(ctx.request.body?.phone || '').trim();
+      const email = String(ctx.request.body?.email || '')
+        .trim()
+        .toLowerCase();
 
-      if (!phone) {
-        return ctx.badRequest('Phone number is required');
+      if (!phone && !email) {
+        return ctx.badRequest('Phone number or email is required');
       }
 
-      if (!phone.startsWith('+256') || phone.length !== 13) {
+      if (phone && (!phone.startsWith('+256') || phone.length !== 13)) {
         return ctx.badRequest('Invalid phone format. Use +256XXXXXXXXX');
       }
 
-      // Verify that a user with this phone exists
-      const authUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({ where: { username: phone } });
+      // Verify user exists by phone or email
+      const authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: phone ? { username: phone } : { email },
+      });
 
       if (!authUser) {
-        return ctx.badRequest('No account found with this phone number');
+        return ctx.badRequest(
+          phone
+            ? 'No account found with this phone number'
+            : 'No account found with this email address',
+        );
       }
 
-      // Look up the user's email for fallback delivery
       const customUser: any = await strapi.db.query('api::user.user').findOne({
-        where: { phone },
-        select: ['email'],
+        where: phone ? { phone } : { email },
+        select: ['email', 'phone'],
       });
+
+      // Use the provided method (phone or email) as the OTP channel key for consistent lookup
+      const otpChannelKey = phone || email;
+      const deliveryEmail = customUser?.email || authUser?.email || email;
 
       // Send OTP (SMS → email → console fallback)
       const otpService = strapi.service('api::otp.otp');
-      const { deliveredVia } = await otpService.generateOtp(
-        phone,
-        customUser?.email || authUser?.email,
-      );
+      const { deliveredVia } = await otpService.generateOtp(otpChannelKey, deliveryEmail);
 
       const messages: Record<string, string> = {
         sms: 'Verification code sent to your phone via SMS',
-        email: `Verification code sent to ${_maskEmail(customUser?.email || authUser?.email)}`,
+        email: `Verification code sent to ${_maskEmail(deliveryEmail)}`,
         console: 'Verification code sent (demo mode — check server logs)',
       };
 
@@ -1135,33 +1142,38 @@ export default {
 
   /**
    * Reset password - Step 2: Verify OTP and set new password
-   * Takes phone + OTP + new password, verifies OTP, updates password
+   * Takes phone OR email + OTP + new password, verifies OTP, updates password
    */
   async resetPassword(ctx: any) {
     try {
-      const { phone, otp, newPassword } = ctx.request.body;
+      const phone = String(ctx.request.body?.phone || '').trim();
+      const email = String(ctx.request.body?.email || '')
+        .trim()
+        .toLowerCase();
+      const { otp, newPassword } = ctx.request.body;
 
-      if (!phone || !otp || !newPassword) {
-        return ctx.badRequest('Phone, OTP, and new password are required');
+      if ((!phone && !email) || !otp || !newPassword) {
+        return ctx.badRequest('Phone or email, OTP, and new password are required');
       }
 
       if (newPassword.length < 6) {
         return ctx.badRequest('Password must be at least 6 characters');
       }
 
-      // Verify OTP
+      // Verify OTP using the phone/email as key
       const otpService = strapi.service('api::otp.otp');
-      const isValid = otpService.verifyOtp(phone, otp);
+      const otpChannelKey = phone || email;
+      const isValid = otpService.verifyOtp(otpChannelKey, otp);
 
       if (!isValid) {
         ctx.status = 401;
         return (ctx.body = { error: 'Invalid or expired verification code' });
       }
 
-      // Find auth user
-      const authUser = await strapi
-        .query('plugin::users-permissions.user')
-        .findOne({ where: { username: phone } });
+      // Find auth user by phone or email
+      const authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: phone ? { username: phone } : { email },
+      });
 
       if (!authUser) {
         return ctx.notFound('User not found');

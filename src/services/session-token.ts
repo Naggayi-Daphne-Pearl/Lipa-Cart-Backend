@@ -77,6 +77,20 @@ const getRefreshCookieCandidates = (ctx: any): string[] => {
     : [scopedName, REFRESH_COOKIE_NAME];
 };
 
+// Parent domain candidates for *eviction only*. We never set cookies with these
+// domains — only delete them, to clear legacy cookies that were historically
+// written with `Domain=.lipacart.com` and now cause cross-subdomain identity
+// bleed (a logged-out shopper's cookie resurrecting on lipacart.com).
+const getLegacyParentDomainsForEviction = (ctx: any): string[] => {
+  const originUrl = getRequestOriginUrl(ctx);
+  const host = originUrl?.hostname.toLowerCase();
+  if (!host) return [];
+  if (host === 'lipacart.com' || host.endsWith('.lipacart.com')) {
+    return ['.lipacart.com', 'lipacart.com'];
+  }
+  return [];
+};
+
 type SessionDiagnostics = {
   host: string | null;
   origin: string | null;
@@ -185,20 +199,33 @@ const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
 export const clearRefreshCookie = (ctx: any) => {
   const secure = isSecureRequest(ctx);
   const cookieNames = Array.from(new Set(getRefreshCookieCandidates(ctx)));
+  const parentDomains = getLegacyParentDomainsForEviction(ctx);
 
   if (secure && ctx.cookies) {
     ctx.cookies.secure = true;
   }
 
+  const baseDeleteOpts = {
+    httpOnly: true,
+    secure,
+    sameSite: (secure ? 'none' : 'lax') as 'none' | 'lax',
+    overwrite: true,
+    expires: new Date(0),
+    path: '/',
+  };
+
   for (const cookieName of cookieNames) {
-    ctx.cookies.set(cookieName, '', {
-      httpOnly: true,
-      secure,
-      sameSite: secure ? 'none' : 'lax',
-      overwrite: true,
-      expires: new Date(0),
-      path: '/',
-    });
+    // Host-only deletion (matches how we set cookies today).
+    ctx.cookies.set(cookieName, '', baseDeleteOpts);
+
+    // Additive: also delete any legacy parent-domain cookie of the same name.
+    // Browsers treat Domain-scoped and host-only cookies as distinct, so we
+    // must replay the delete with each historical domain to actually evict
+    // them. Without this, a stale `.lipacart.com` refresh_token cookie
+    // survives logout and resurrects the previous role on every page load.
+    for (const domain of parentDomains) {
+      ctx.cookies.set(cookieName, '', { ...baseDeleteOpts, domain });
+    }
   }
 };
 

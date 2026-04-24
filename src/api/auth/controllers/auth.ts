@@ -2,9 +2,7 @@ import type { Core } from '@strapi/strapi';
 import { createAuthUserWithRole } from '../../../services/role-helper';
 import { verifyGoogleIdToken } from '../../../services/google-auth';
 import {
-  getSessionDiagnostics,
   issueSessionTokens,
-  logAuthDiagnostics,
   resolveSessionUser,
   revokeSession,
 } from '../../../services/session-token';
@@ -789,10 +787,8 @@ export default {
    */
   async refresh(ctx: any) {
     try {
-      logAuthDiagnostics('auth.refresh:start', ctx);
       const sessionUser = await resolveSessionUser(strapi, ctx);
       if (!sessionUser) {
-        logAuthDiagnostics('auth.refresh:unauthorized', ctx);
         return ctx.unauthorized('Refresh token expired or invalid');
       }
 
@@ -910,15 +906,7 @@ export default {
           }),
         },
       };
-
-      logAuthDiagnostics('auth.refresh:success', ctx, {
-        refreshedUserId: customUser.id,
-        refreshedUserType: customUser.user_type,
-      });
     } catch (error) {
-      logAuthDiagnostics('auth.refresh:error', ctx, {
-        errorMessage: (error as any)?.message || 'unknown',
-      });
       console.error('Token refresh error:', error);
       ctx.throw(500, 'Failed to refresh token');
     }
@@ -929,18 +917,9 @@ export default {
    */
   async logout(ctx: any) {
     try {
-      const diagnostics = getSessionDiagnostics(ctx);
-      logAuthDiagnostics('auth.logout:start', ctx, {
-        origin: diagnostics.origin,
-        scope: diagnostics.scope,
-      });
       await revokeSession(strapi, ctx);
       ctx.body = { success: true };
-      logAuthDiagnostics('auth.logout:success', ctx);
     } catch (error) {
-      logAuthDiagnostics('auth.logout:error', ctx, {
-        errorMessage: (error as any)?.message || 'unknown',
-      });
       console.error('Logout error:', error);
       ctx.throw(500, 'Failed to log out');
     }

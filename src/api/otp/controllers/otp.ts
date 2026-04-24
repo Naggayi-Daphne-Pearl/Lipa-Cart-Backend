@@ -47,7 +47,7 @@ export default {
 
       // Verify OTP
       const otpService = strapi.service('api::otp.otp');
-      const isValid = otpService.verifyOtp(phone, otp);
+      const isValid = await otpService.verifyOtp(phone, otp);
 
       if (!isValid) {
         ctx.status = 401;

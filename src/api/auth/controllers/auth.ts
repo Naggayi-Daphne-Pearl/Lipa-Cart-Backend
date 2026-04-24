@@ -2,7 +2,9 @@ import type { Core } from '@strapi/strapi';
 import { createAuthUserWithRole } from '../../../services/role-helper';
 import { verifyGoogleIdToken } from '../../../services/google-auth';
 import {
+  getSessionDiagnostics,
   issueSessionTokens,
+  logAuthDiagnostics,
   resolveSessionUser,
   revokeSession,
 } from '../../../services/session-token';
@@ -787,8 +789,10 @@ export default {
    */
   async refresh(ctx: any) {
     try {
+      logAuthDiagnostics('auth.refresh:start', ctx);
       const sessionUser = await resolveSessionUser(strapi, ctx);
       if (!sessionUser) {
+        logAuthDiagnostics('auth.refresh:unauthorized', ctx);
         return ctx.unauthorized('Refresh token expired or invalid');
       }
 
@@ -906,7 +910,15 @@ export default {
           }),
         },
       };
+
+      logAuthDiagnostics('auth.refresh:success', ctx, {
+        refreshedUserId: customUser.id,
+        refreshedUserType: customUser.user_type,
+      });
     } catch (error) {
+      logAuthDiagnostics('auth.refresh:error', ctx, {
+        errorMessage: (error as any)?.message || 'unknown',
+      });
       console.error('Token refresh error:', error);
       ctx.throw(500, 'Failed to refresh token');
     }
@@ -917,9 +929,18 @@ export default {
    */
   async logout(ctx: any) {
     try {
+      const diagnostics = getSessionDiagnostics(ctx);
+      logAuthDiagnostics('auth.logout:start', ctx, {
+        origin: diagnostics.origin,
+        scope: diagnostics.scope,
+      });
       await revokeSession(strapi, ctx);
       ctx.body = { success: true };
+      logAuthDiagnostics('auth.logout:success', ctx);
     } catch (error) {
+      logAuthDiagnostics('auth.logout:error', ctx, {
+        errorMessage: (error as any)?.message || 'unknown',
+      });
       console.error('Logout error:', error);
       ctx.throw(500, 'Failed to log out');
     }
@@ -1153,7 +1174,7 @@ export default {
       // Edge case 8: Basic rate limiting - check if OTP was recently sent
       const otpService = strapi.service('api::otp.otp');
       const otpChannelKey = phone || email;
-      const recentOtp = otpService.getOtp(otpChannelKey);
+      const recentOtp = await otpService.getOtp(otpChannelKey);
 
       if (recentOtp) {
         const createdAt = new Date(recentOtp.createdAt || Date.now());
@@ -1286,7 +1307,7 @@ export default {
       const otpChannelKey = phone || email;
 
       // Edge case 5: Check OTP validity and tracking
-      const otpData = otpService.getOtp(otpChannelKey);
+      const otpData = await otpService.getOtp(otpChannelKey);
 
       if (!otpData) {
         return ctx.badRequest('Verification code not found or expired. Please request a new code');
@@ -1297,7 +1318,7 @@ export default {
       const expiresAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
 
       if (Date.now() > expiresAt.getTime()) {
-        otpService.clearOtp(otpChannelKey); // Clear expired OTP
+        await otpService.clearOtp(otpChannelKey); // Clear expired OTP
         return ctx.badRequest('Verification code expired. Please request a new code');
       }
 
@@ -1310,7 +1331,7 @@ export default {
       }
 
       // Edge case 8: Verify OTP matches
-      const isValid = otpService.verifyOtp(otpChannelKey, String(otp));
+      const isValid = await otpService.verifyOtp(otpChannelKey, String(otp));
 
       if (!isValid) {
         // Increment failed attempts
@@ -1318,7 +1339,7 @@ export default {
 
         const remainingAttempts = 5 - failedAttempts - 1;
         if (remainingAttempts <= 0) {
-          otpService.clearOtp(otpChannelKey);
+          await otpService.clearOtp(otpChannelKey);
           return ctx.badRequest('Too many failed attempts. Please request a new verification code');
         }
 
@@ -1358,7 +1379,7 @@ export default {
       });
 
       // Clear the OTP after successful use
-      otpService.clearOtp(otpChannelKey);
+      await otpService.clearOtp(otpChannelKey);
 
       ctx.body = {
         success: true,

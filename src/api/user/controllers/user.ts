@@ -256,7 +256,7 @@ export default factories.createCoreController('api::user.user', ({ strapi }) => 
 
       // Verify OTP for the new phone
       const otpService = strapi.service('api::otp.otp') as any;
-      const isValid = otpService.verifyOtp(new_phone, otp);
+      const isValid = await otpService.verifyOtp(new_phone, otp);
       if (!isValid) return ctx.badRequest('Invalid or expired OTP');
 
       // Check if new phone is already taken

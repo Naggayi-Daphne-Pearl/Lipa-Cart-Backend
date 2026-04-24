@@ -21,10 +21,10 @@ interface SendEmailOptions {
 const FROM_ADDRESS = process.env.SMTP_FROM || 'LipaCart <noreply@lipacart.com>';
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@lipacart.com';
 const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://www.lipacart.com').replace(/\/+$/, '');
-const SMTP_CONNECTION_TIMEOUT_MS = parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '3000', 10);
-const SMTP_GREETING_TIMEOUT_MS = parseInt(process.env.SMTP_GREETING_TIMEOUT_MS || '3000', 10);
-const SMTP_SOCKET_TIMEOUT_MS = parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS || '8000', 10);
-const SMTP_FAILURE_BACKOFF_MS = parseInt(process.env.SMTP_FAILURE_BACKOFF_MS || '120000', 10);
+const SMTP_CONNECTION_TIMEOUT_MS = parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS || '20000', 10);
+const SMTP_GREETING_TIMEOUT_MS = parseInt(process.env.SMTP_GREETING_TIMEOUT_MS || '20000', 10);
+const SMTP_SOCKET_TIMEOUT_MS = parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS || '30000', 10);
+const SMTP_FAILURE_BACKOFF_MS = parseInt(process.env.SMTP_FAILURE_BACKOFF_MS || '60000', 10);
 const PLAY_STORE_URL = process.env.PLAY_STORE_URL?.trim();
 const APP_STORE_URL = process.env.APP_STORE_URL?.trim();
 const INSTAGRAM_URL = process.env.INSTAGRAM_URL?.trim();

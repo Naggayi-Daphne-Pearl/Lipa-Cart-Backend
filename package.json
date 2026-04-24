@@ -27,6 +27,7 @@
     "seed": "node dist/scripts/run-seed.js"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
     "@sentry/node": "^10.48.0",
     "@strapi/plugin-cloud": "5.33.4",
     "@strapi/plugin-users-permissions": "5.33.4",

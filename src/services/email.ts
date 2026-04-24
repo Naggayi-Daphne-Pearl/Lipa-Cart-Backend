@@ -1,7 +1,11 @@
 import * as nodemailer from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
+import sgMail from '@sendgrid/mail';
+
+type EmailTransportKind = 'sendgrid-api' | 'smtp' | null;
 
 let transporter: nodemailer.Transporter | null = null;
+let transportKind: EmailTransportKind = null;
 let lastEmailError: string | null = null;
 let transporterVerified = false;
 let emailTemporarilyDisabledUntil = 0;
@@ -196,6 +200,16 @@ function renderSectionsPlainText(sections: EmailSection[]): string {
  * Call once at server startup. Skips gracefully if not configured.
  */
 export function initEmail(): boolean {
+  const sendgridApiKey = process.env.SENDGRID_API_KEY?.trim();
+  if (sendgridApiKey) {
+    sgMail.setApiKey(sendgridApiKey);
+    transportKind = 'sendgrid-api';
+    transporterVerified = true;
+    lastEmailError = null;
+    console.log('[email] SendGrid Web API transport initialized');
+    return true;
+  }
+
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
   const user = process.env.SMTP_USER?.trim();
@@ -215,6 +229,7 @@ export function initEmail(): boolean {
     );
   }
 
+  transportKind = 'smtp';
   transporter = nodemailer.createTransport({
     host,
     port,
@@ -251,12 +266,13 @@ export function initEmail(): boolean {
 
 /** Whether the email service is ready. */
 export function isEmailReady(): boolean {
-  return transporter !== null;
+  return transportKind !== null;
 }
 
 export function getEmailDiagnostics() {
   return {
     configured: isEmailReady(),
+    transport: transportKind,
     verified: transporterVerified,
     lastError: lastEmailError,
   };
@@ -342,7 +358,7 @@ export async function sendEmail(
   html?: string,
   text?: string,
 ): Promise<boolean> {
-  if (!transporter) return false;
+  if (!transportKind) return false;
 
   if (Date.now() < emailTemporarilyDisabledUntil) {
     return false;
@@ -360,36 +376,71 @@ export async function sendEmail(
 
   if (!payload.to) return false;
 
-  try {
-    const finalText = withSupportContact(payload.text || toPlainText(payload.html));
+  const finalText = withSupportContact(payload.text || toPlainText(payload.html));
+  const mergedHeaders = {
+    ...(payload.headers || {}),
+    'X-Support-Email': SUPPORT_EMAIL,
+  };
 
-    await transporter.sendMail({
-      from: FROM_ADDRESS,
-      to: payload.to,
-      replyTo: payload.replyTo || SUPPORT_EMAIL,
-      subject: payload.subject,
-      html: payload.html,
-      text: finalText,
-      headers: {
-        ...(payload.headers || {}),
-        'X-Support-Email': SUPPORT_EMAIL,
-      },
-      attachments: payload.attachments,
-    });
+  try {
+    if (transportKind === 'sendgrid-api') {
+      const { from, name } = parseFromAddress(FROM_ADDRESS);
+      await sgMail.send({
+        to: payload.to,
+        from: name ? { email: from, name } : from,
+        replyTo: payload.replyTo || SUPPORT_EMAIL,
+        subject: payload.subject,
+        html: payload.html,
+        text: finalText,
+        headers: mergedHeaders,
+        attachments: payload.attachments?.map((a) => ({
+          filename: String(a.filename || 'attachment'),
+          type: (a as any).contentType || 'application/octet-stream',
+          disposition: 'attachment',
+          content: Buffer.isBuffer(a.content)
+            ? a.content.toString('base64')
+            : Buffer.from(String(a.content ?? ''), 'utf8').toString('base64'),
+        })),
+      });
+    } else {
+      if (!transporter) return false;
+      await transporter.sendMail({
+        from: FROM_ADDRESS,
+        to: payload.to,
+        replyTo: payload.replyTo || SUPPORT_EMAIL,
+        subject: payload.subject,
+        html: payload.html,
+        text: finalText,
+        headers: mergedHeaders,
+        attachments: payload.attachments,
+      });
+    }
     lastEmailError = null;
     emailTemporarilyDisabledUntil = 0;
     return true;
   } catch (err: any) {
-    lastEmailError = err?.message || 'Email send failed';
-    if (isTimeoutLikeError(err) && process.env.NODE_ENV !== 'test') {
+    const sgBody = err?.response?.body;
+    lastEmailError =
+      (sgBody && typeof sgBody === 'object' ? JSON.stringify(sgBody) : null) ||
+      err?.message ||
+      'Email send failed';
+    if (transportKind === 'smtp' && isTimeoutLikeError(err) && process.env.NODE_ENV !== 'test') {
       emailTemporarilyDisabledUntil = Date.now() + SMTP_FAILURE_BACKOFF_MS;
       console.warn(
         `[email] SMTP temporarily disabled for ${Math.ceil(SMTP_FAILURE_BACKOFF_MS / 1000)}s after timeout`,
       );
     }
-    console.error(`[email] Failed to send to ${payload.to}:`, err?.message);
+    console.error(`[email] Failed to send to ${payload.to}:`, lastEmailError);
     return false;
   }
+}
+
+function parseFromAddress(raw: string): { from: string; name?: string } {
+  const match = raw.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (match) {
+    return { name: match[1]?.replace(/^"|"$/g, '').trim() || undefined, from: match[2].trim() };
+  }
+  return { from: raw.trim() };
 }
 
 function escapePdfText(input: string): string {

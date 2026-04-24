@@ -6,6 +6,9 @@ const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 const STANDARD_REFRESH_DAYS = 14;
 const REMEMBER_ME_REFRESH_DAYS = 30;
 const REFRESH_COOKIE_NAME = 'refresh_token';
+const AUTH_DIAGNOSTICS_ENABLED = process.env.AUTH_DIAGNOSTICS === 'true';
+
+type SessionScope = 'customer' | 'shopper' | 'rider' | 'admin';
 
 const parseRememberMe = (value: unknown, fallback = true): boolean => {
   if (typeof value === 'boolean') return value;
@@ -23,6 +26,102 @@ const isSecureRequest = (ctx: any): boolean => {
   }
 
   return Boolean(ctx.request?.secure || ctx.secure || ctx.protocol === 'https');
+};
+
+const getRequestOriginUrl = (ctx: any): URL | null => {
+  const candidates = [ctx.request.headers.origin, ctx.request.headers.referer];
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+      continue;
+    }
+
+    try {
+      return new URL(candidate);
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+};
+
+const getSessionScope = (ctx: any): SessionScope | null => {
+  const originUrl = getRequestOriginUrl(ctx);
+  const host = originUrl?.hostname.toLowerCase();
+
+  if (!host) {
+    return null;
+  }
+
+  if (host === 'lipacart.com' || host === 'www.lipacart.com') {
+    return 'customer';
+  }
+
+  if (host.startsWith('shopper.')) return 'shopper';
+  if (host.startsWith('rider.')) return 'rider';
+  if (host.startsWith('admin.')) return 'admin';
+
+  return null;
+};
+
+const getRefreshCookieName = (ctx: any): string => {
+  const scope = getSessionScope(ctx);
+  return scope ? `${REFRESH_COOKIE_NAME}_${scope}` : REFRESH_COOKIE_NAME;
+};
+
+const getRefreshCookieCandidates = (ctx: any): string[] => {
+  const scopedName = getRefreshCookieName(ctx);
+  return scopedName === REFRESH_COOKIE_NAME
+    ? [REFRESH_COOKIE_NAME]
+    : [scopedName, REFRESH_COOKIE_NAME];
+};
+
+type SessionDiagnostics = {
+  host: string | null;
+  origin: string | null;
+  scope: SessionScope | null;
+  secure: boolean;
+  cookieCandidates: string[];
+  cookiePresence: Record<string, boolean>;
+  hasRefreshTokenInBody: boolean;
+  hasAuthorizationHeader: boolean;
+};
+
+export const getSessionDiagnostics = (ctx: any): SessionDiagnostics => {
+  const originUrl = getRequestOriginUrl(ctx);
+  const cookieCandidates = getRefreshCookieCandidates(ctx);
+  const cookiePresence = Object.fromEntries(
+    cookieCandidates.map((cookieName) => [cookieName, Boolean(ctx.cookies.get(cookieName))]),
+  );
+
+  return {
+    host: originUrl?.hostname?.toLowerCase() ?? null,
+    origin: originUrl?.origin ?? null,
+    scope: getSessionScope(ctx),
+    secure: isSecureRequest(ctx),
+    cookieCandidates,
+    cookiePresence,
+    hasRefreshTokenInBody: Boolean(ctx.request.body?.refreshToken),
+    hasAuthorizationHeader:
+      typeof ctx.request.headers.authorization === 'string' &&
+      ctx.request.headers.authorization.startsWith('Bearer '),
+  };
+};
+
+export const logAuthDiagnostics = (
+  phase: string,
+  ctx: any,
+  extra: Record<string, unknown> = {},
+) => {
+  if (!AUTH_DIAGNOSTICS_ENABLED) return;
+
+  const diagnostics = getSessionDiagnostics(ctx);
+  console.info('[auth:diag]', {
+    phase,
+    ...diagnostics,
+    ...extra,
+  });
 };
 
 const hashRefreshToken = (value: string): string => {
@@ -62,6 +161,7 @@ const getEntityId = async (strapi: Core.Strapi, entry: any): Promise<number> => 
 
 const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
   const secure = isSecureRequest(ctx);
+  const cookieName = getRefreshCookieName(ctx);
 
   // When behind a TLS-terminating proxy (Railway, Render, etc.) the raw
   // Node request is plain HTTP.  The `cookies` library checks the raw
@@ -72,7 +172,7 @@ const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
     ctx.cookies.secure = true;
   }
 
-  ctx.cookies.set(REFRESH_COOKIE_NAME, refreshToken, {
+  ctx.cookies.set(cookieName, refreshToken, {
     httpOnly: true,
     secure,
     sameSite: secure ? 'none' : 'lax',
@@ -84,19 +184,22 @@ const setRefreshCookie = (ctx: any, refreshToken: string, expiresAt: Date) => {
 
 export const clearRefreshCookie = (ctx: any) => {
   const secure = isSecureRequest(ctx);
+  const cookieNames = Array.from(new Set(getRefreshCookieCandidates(ctx)));
 
   if (secure && ctx.cookies) {
     ctx.cookies.secure = true;
   }
 
-  ctx.cookies.set(REFRESH_COOKIE_NAME, '', {
-    httpOnly: true,
-    secure,
-    sameSite: secure ? 'none' : 'lax',
-    overwrite: true,
-    expires: new Date(0),
-    path: '/',
-  });
+  for (const cookieName of cookieNames) {
+    ctx.cookies.set(cookieName, '', {
+      httpOnly: true,
+      secure,
+      sameSite: secure ? 'none' : 'lax',
+      overwrite: true,
+      expires: new Date(0),
+      path: '/',
+    });
+  }
 };
 
 const findCustomUserByRefreshToken = async (strapi: Core.Strapi, refreshToken: string) => {
@@ -181,13 +284,29 @@ export const issueSessionTokens = async (
 };
 
 export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
-  const refreshToken = ctx.request.body?.refreshToken || ctx.cookies.get(REFRESH_COOKIE_NAME);
+  logAuthDiagnostics('resolveSessionUser:start', ctx);
+
+  const refreshTokenFromBody = ctx.request.body?.refreshToken;
+  const refreshTokenFromCookie = getRefreshCookieCandidates(ctx).find((cookieName) => {
+    const value = ctx.cookies.get(cookieName);
+    return typeof value === 'string' && value.length > 0;
+  });
+  const refreshTokenCookieValue = refreshTokenFromCookie
+    ? ctx.cookies.get(refreshTokenFromCookie)
+    : null;
+  const refreshToken = refreshTokenFromBody || refreshTokenCookieValue;
 
   if (refreshToken) {
     const customUser = await findCustomUserByRefreshToken(strapi, refreshToken);
     if (customUser) {
       const authUser = await findAuthUserByPhone(strapi, customUser.phone);
       if (authUser) {
+        logAuthDiagnostics('resolveSessionUser:refresh-token-success', ctx, {
+          refreshTokenSource: refreshTokenFromBody ? 'body' : 'cookie',
+          refreshCookieNameUsed: refreshTokenFromCookie,
+          resolvedUserId: customUser.id,
+          resolvedUserType: customUser.user_type,
+        });
         return {
           authUser,
           customUser,
@@ -195,10 +314,16 @@ export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
         };
       }
     }
+
+    logAuthDiagnostics('resolveSessionUser:refresh-token-miss', ctx, {
+      refreshTokenSource: refreshTokenFromBody ? 'body' : 'cookie',
+      refreshCookieNameUsed: refreshTokenFromCookie,
+    });
   }
 
   const authHeader = ctx.request.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    logAuthDiagnostics('resolveSessionUser:no-credentials', ctx);
     return null;
   }
 
@@ -216,8 +341,17 @@ export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
 
     const customUser = await findCustomUserByPhone(strapi, authUser.username);
     if (!customUser) {
+      logAuthDiagnostics('resolveSessionUser:access-token-no-custom-user', ctx, {
+        authUserId: authUser.id,
+      });
       return null;
     }
+
+    logAuthDiagnostics('resolveSessionUser:access-token-success', ctx, {
+      authUserId: authUser.id,
+      resolvedUserId: customUser.id,
+      resolvedUserType: customUser.user_type,
+    });
 
     return {
       authUser,
@@ -225,11 +359,13 @@ export const resolveSessionUser = async (strapi: Core.Strapi, ctx: any) => {
       rememberMe: parseRememberMe(ctx.request.body?.rememberMe, customUser.remember_me ?? true),
     };
   } catch (error) {
+    logAuthDiagnostics('resolveSessionUser:access-token-failed', ctx);
     return null;
   }
 };
 
 export const revokeSession = async (strapi: Core.Strapi, ctx: any) => {
+  logAuthDiagnostics('revokeSession:start', ctx);
   const sessionUser = await resolveSessionUser(strapi, ctx);
 
   if (sessionUser?.customUser) {
@@ -243,7 +379,15 @@ export const revokeSession = async (strapi: Core.Strapi, ctx: any) => {
         remember_me: false,
       } as any,
     });
+
+    logAuthDiagnostics('revokeSession:revoked-user-session', ctx, {
+      revokedUserId: sessionUser.customUser.id,
+      revokedUserType: sessionUser.customUser.user_type,
+    });
+  } else {
+    logAuthDiagnostics('revokeSession:no-session-user', ctx);
   }
 
   clearRefreshCookie(ctx);
+  logAuthDiagnostics('revokeSession:cookies-cleared', ctx);
 };

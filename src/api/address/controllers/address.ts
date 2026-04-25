@@ -1,4 +1,101 @@
 import { factories } from '@strapi/strapi';
+import { checkServiceArea } from '../../../services/service-area';
+
+/**
+ * Reject *create* payloads that would silently break checkout downstream.
+ *
+ * The order.create flow (and the service-area middleware) requires every
+ * address to have non-empty text + valid GPS coordinates inside the delivery
+ * zone. Strapi's schema-level `required: true` only checks presence, not
+ * non-empty strings, and gps_lat/gps_lng aren't required at the schema level
+ * because we sometimes seed addresses without them. Enforce the full contract
+ * here so a partially-filled form can never produce an unusable record.
+ *
+ * Returns null when valid; otherwise an error message ready for ctx.badRequest.
+ */
+function validateAddressPayload(data: any): string | null {
+  const addressLine = typeof data?.address_line === 'string' ? data.address_line.trim() : '';
+  if (addressLine.length === 0) {
+    return 'address_line is required';
+  }
+  const city = typeof data?.city === 'string' ? data.city.trim() : '';
+  if (city.length === 0) {
+    return 'city is required';
+  }
+
+  const lat =
+    typeof data?.gps_lat === 'number'
+      ? data.gps_lat
+      : Number.parseFloat(String(data?.gps_lat ?? ''));
+  const lng =
+    typeof data?.gps_lng === 'number'
+      ? data.gps_lng
+      : Number.parseFloat(String(data?.gps_lng ?? ''));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return 'gps_lat and gps_lng are required — drop a map pin before saving the address';
+  }
+
+  const areaCheck = checkServiceArea(lat, lng);
+  if (!areaCheck.ok) {
+    return areaCheck.reason;
+  }
+  return null;
+}
+
+/**
+ * Reject *update* patches that would silently break a previously-valid record
+ * — but only on fields the caller actually touched.
+ *
+ * Validating the merged record (existing + patch) on every PATCH would lock
+ * customers out of legacy addresses created before this validator existed:
+ * any record missing city or GPS would become un-editable for unrelated
+ * fields like label / landmark / delivery_instructions. Patch-only validation
+ * preserves the "no silent hollowing-out" intent (can't blank out
+ * address_line, can't null-out one of the two GPS coords) without trapping
+ * users on legacy data they didn't create.
+ *
+ * Returns null when valid; otherwise an error message.
+ */
+function validateAddressPatch(patch: any): string | null {
+  if (patch == null) return null;
+
+  if ('address_line' in patch) {
+    const v = typeof patch.address_line === 'string' ? patch.address_line.trim() : '';
+    if (v.length === 0) {
+      return 'address_line cannot be empty';
+    }
+  }
+
+  if ('city' in patch) {
+    const v = typeof patch.city === 'string' ? patch.city.trim() : '';
+    if (v.length === 0) {
+      return 'city cannot be empty';
+    }
+  }
+
+  // GPS is a pair: touching either coord requires both to be valid and inside
+  // the service area, so we never end up with a half-pinned record.
+  const touchesLat = 'gps_lat' in patch;
+  const touchesLng = 'gps_lng' in patch;
+  if (touchesLat || touchesLng) {
+    const lat =
+      typeof patch.gps_lat === 'number'
+        ? patch.gps_lat
+        : Number.parseFloat(String(patch.gps_lat ?? ''));
+    const lng =
+      typeof patch.gps_lng === 'number'
+        ? patch.gps_lng
+        : Number.parseFloat(String(patch.gps_lng ?? ''));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return 'gps_lat and gps_lng must both be valid numbers when updating the map pin';
+    }
+    const areaCheck = checkServiceArea(lat, lng);
+    if (!areaCheck.ok) {
+      return areaCheck.reason;
+    }
+  }
+  return null;
+}
 
 // Module-level helpers — kept outside the controller object so they don't have
 // to conform to Strapi's `(ctx) => Promise` controller handler signature.
@@ -63,6 +160,12 @@ export default factories.createCoreController('api::address.address', ({ strapi 
     const roleType = user.role?.type;
     if (roleType !== 'customer' && roleType !== 'admin') {
       return ctx.forbidden('Only customers can manage addresses');
+    }
+
+    const validationError = validateAddressPayload(ctx.request.body?.data);
+    if (validationError) {
+      strapi.log.warn(`[address.create] reject: ${validationError} user=${user.id}`);
+      return ctx.badRequest(validationError);
     }
 
     if (roleType === 'admin') {
@@ -170,6 +273,18 @@ export default factories.createCoreController('api::address.address', ({ strapi 
       ctx.request.body.data = {};
     }
     ctx.request.body.data.customer = customer.id;
+
+    // Patch-level validation: only inspect fields the caller submitted. This
+    // preserves the "no silent hollowing-out" intent (can't blank out
+    // address_line, can't half-pin GPS) while letting customers edit unrelated
+    // fields on legacy records that pre-date the GPS-required contract.
+    const validationError = validateAddressPatch(ctx.request.body.data);
+    if (validationError) {
+      strapi.log.warn(
+        `[address.update] reject: ${validationError} user=${user.id} address=${existing.id}`,
+      );
+      return ctx.badRequest(validationError);
+    }
 
     return super.update(ctx);
   },

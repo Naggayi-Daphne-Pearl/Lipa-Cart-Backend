@@ -129,6 +129,9 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       { action: 'find', contentType: 'api::payment.payment' },
       { action: 'findOne', contentType: 'api::payment.payment' },
 
+      // Training quiz (post-KYC onboarding)
+      { action: 'submit', contentType: 'api::training-attempt.training-attempt' },
+
       // Upload media (KYC documents, substitute photos)
       { action: 'upload', contentType: 'plugin::upload.content-api' },
     ],
@@ -173,6 +176,9 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
       // Payment info (view only)
       { action: 'find', contentType: 'api::payment.payment' },
       { action: 'findOne', contentType: 'api::payment.payment' },
+
+      // Training quiz (post-KYC onboarding)
+      { action: 'submit', contentType: 'api::training-attempt.training-attempt' },
 
       // Upload media (KYC documents, delivery proof photos)
       { action: 'upload', contentType: 'plugin::upload.content-api' },

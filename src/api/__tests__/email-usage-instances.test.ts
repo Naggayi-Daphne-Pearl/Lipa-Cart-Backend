@@ -142,122 +142,105 @@ describe('email usage instances - controllers', () => {
     expect(ctx.body?.success).toBe(true);
   });
 
-  it('sends shopper verification status email on KYC approval', async () => {
+  it('sends shopper verification status email when lifecycle fires on kyc_status=approved', async () => {
     const strapiMock = {
-      plugins: {
-        'users-permissions': {
-          services: {
-            jwt: {
-              verify: jest.fn().mockResolvedValue({ id: 1 }),
-            },
-          },
-        },
-      },
-      query: jest.fn(() => ({
-        findOne: jest.fn().mockResolvedValue({ id: 1, username: '+256700000111' }),
-      })),
       db: {
-        query: jest.fn((uid: string) => {
-          if (uid === 'api::user.user') {
-            return {
-              findOne: jest.fn().mockResolvedValue({ id: 1, user_type: 'admin' }),
-            };
-          }
-          if (uid === 'api::shopper.shopper') {
-            return {
-              findOne: jest.fn().mockResolvedValue({
-                id: 22,
-                documentId: 'shopper-doc-22',
-                user: { email: 'shopper@example.com', name: 'Shopper Name' },
-              }),
-            };
-          }
-          return { findOne: jest.fn().mockResolvedValue(null) };
-        }),
+        query: jest.fn(() => ({
+          findOne: jest.fn().mockResolvedValue({
+            id: 22,
+            documentId: 'shopper-doc-22',
+            user: { email: 'shopper@example.com', name: 'Shopper Name' },
+          }),
+        })),
       },
-      entityService: {
-        update: jest.fn().mockResolvedValue({
-          id: 22,
-          documentId: 'shopper-doc-22',
-          kyc_status: 'approved',
-          is_verified: true,
-          kyc_reviewed_at: new Date().toISOString(),
-        }),
-      },
-      log: {
-        warn: jest.fn(),
-      },
+      log: { warn: jest.fn(), info: jest.fn() },
     };
 
-    strapiHolder.current = strapiMock;
+    (global as any).strapi = strapiMock;
     jest.resetModules();
-    const shopperController = require('../shopper/controllers/shopper').default;
+    const shopperLifecycles = require('../shopper/content-types/shopper/lifecycles').default;
 
-    const ctx = makeCtx({ action: 'approve' }, { id: 'shopper-doc-22' });
-    await shopperController.reviewKyc(ctx);
+    await shopperLifecycles.afterUpdate({
+      result: { id: 22 },
+      params: { data: { kyc_status: 'approved' } },
+    });
 
     expect(sendKycApprovedLoginEmailMock).toHaveBeenCalledWith('shopper@example.com', 'shopper', {
       name: 'Shopper Name',
     });
   });
 
-  it('sends rider verification status email on KYC approval', async () => {
+  it('sends rider verification status email when lifecycle fires on kyc_status=approved', async () => {
     const strapiMock = {
-      plugins: {
-        'users-permissions': {
-          services: {
-            jwt: {
-              verify: jest.fn().mockResolvedValue({ id: 1 }),
-            },
-          },
-        },
-      },
-      query: jest.fn(() => ({
-        findOne: jest.fn().mockResolvedValue({ id: 1, username: '+256700000112' }),
-      })),
       db: {
-        query: jest.fn((uid: string) => {
-          if (uid === 'api::user.user') {
-            return {
-              findOne: jest.fn().mockResolvedValue({ id: 1, user_type: 'admin' }),
-            };
-          }
-          if (uid === 'api::rider.rider') {
-            return {
-              findOne: jest.fn().mockResolvedValue({
-                id: 23,
-                documentId: 'rider-doc-23',
-                user: { email: 'rider@example.com', name: 'Rider Name' },
-              }),
-            };
-          }
-          return { findOne: jest.fn().mockResolvedValue(null) };
-        }),
+        query: jest.fn(() => ({
+          findOne: jest.fn().mockResolvedValue({
+            id: 23,
+            documentId: 'rider-doc-23',
+            user: { email: 'rider@example.com', name: 'Rider Name' },
+          }),
+        })),
       },
-      entityService: {
-        update: jest.fn().mockResolvedValue({
-          id: 23,
-          documentId: 'rider-doc-23',
-          kyc_status: 'approved',
-          is_verified: true,
-          kyc_reviewed_at: new Date().toISOString(),
-        }),
-      },
-      log: {
-        warn: jest.fn(),
-      },
+      log: { warn: jest.fn(), info: jest.fn() },
     };
 
-    strapiHolder.current = strapiMock;
+    (global as any).strapi = strapiMock;
     jest.resetModules();
-    const riderController = require('../rider/controllers/rider').default;
+    const riderLifecycles = require('../rider/content-types/rider/lifecycles').default;
 
-    const ctx = makeCtx({ action: 'approve' }, { id: 'rider-doc-23' });
-    await riderController.reviewKyc(ctx);
+    await riderLifecycles.afterUpdate({
+      result: { id: 23 },
+      params: { data: { kyc_status: 'approved' } },
+    });
 
     expect(sendKycApprovedLoginEmailMock).toHaveBeenCalledWith('rider@example.com', 'rider', {
       name: 'Rider Name',
     });
+  });
+
+  it('does not send email when kyc_status is not the field being updated', async () => {
+    const strapiMock = {
+      db: { query: jest.fn() },
+      log: { warn: jest.fn(), info: jest.fn() },
+    };
+
+    (global as any).strapi = strapiMock;
+    jest.resetModules();
+    const riderLifecycles = require('../rider/content-types/rider/lifecycles').default;
+
+    await riderLifecycles.afterUpdate({
+      result: { id: 23 },
+      params: { data: { is_active: false } },
+    });
+
+    expect(sendKycApprovedLoginEmailMock).not.toHaveBeenCalled();
+    expect(strapiMock.db.query).not.toHaveBeenCalled();
+  });
+
+  it('does not re-send approval email when row was already approved', async () => {
+    const strapiMock = {
+      db: {
+        query: jest.fn(() => ({
+          findOne: jest.fn().mockResolvedValue({
+            id: 23,
+            user: { email: 'rider@example.com', name: 'Rider Name' },
+          }),
+        })),
+      },
+      log: { warn: jest.fn(), info: jest.fn() },
+    };
+
+    (global as any).strapi = strapiMock;
+    jest.resetModules();
+    const riderLifecycles = require('../rider/content-types/rider/lifecycles').default;
+
+    await riderLifecycles.afterUpdate({
+      result: { id: 23 },
+      params: { data: { kyc_status: 'approved' } },
+      state: { previousKycStatus: 'approved' },
+    });
+
+    expect(sendKycApprovedLoginEmailMock).not.toHaveBeenCalled();
   });
 
   it('sends order confirmation email when payment is confirmed', async () => {

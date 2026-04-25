@@ -577,13 +577,17 @@ export async function sendKycApprovedLoginEmail(
     { kind: 'greeting', text: greeting },
     {
       kind: 'paragraph',
-      text: `Your ${roleLabel} account has been reviewed and approved. You can now log in and start working in the app.`,
+      text: `Welcome to the LipaCart team! Your ${roleLabel} account has been reviewed and approved.`,
+    },
+    {
+      kind: 'paragraph',
+      text: 'When you log in, the app will guide you through a short training quiz (5 questions, about 3 minutes) before you start taking orders. You can retake it if you do not pass the first time.',
     },
     { kind: 'cta', label: 'Log In to LipaCart', url: loginUrl },
     {
       kind: 'notice',
       title: "You're approved",
-      body: 'Welcome to the LipaCart team. Tap the button above to get started.',
+      body: 'Welcome to the LipaCart team. Tap the button above to log in and start your training.',
       tone: 'success',
     },
   ];

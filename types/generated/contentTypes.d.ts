@@ -955,6 +955,7 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
     total_deliveries_completed: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     total_earnings: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_ratings: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    training_completed_at: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     user: Schema.Attribute.Relation<'oneToOne', 'api::user.user'>;
@@ -1011,6 +1012,7 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     total_earnings: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_orders_completed: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     total_ratings: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    training_completed_at: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     user: Schema.Attribute.Relation<'oneToOne', 'api::user.user'>;
@@ -1073,6 +1075,96 @@ export interface ApiSubcategorySubcategory extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     slug: Schema.Attribute.UID<'name'>;
     sort_order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+  };
+}
+
+export interface ApiTrainingAttemptTrainingAttempt extends Struct.CollectionTypeSchema {
+  collectionName: 'training_attempts';
+  info: {
+    description: "A rider or shopper's quiz submission and resulting score";
+    displayName: 'Training Attempt';
+    pluralName: 'training-attempts';
+    singularName: 'training-attempt';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    answers: Schema.Attribute.JSON;
+    attempted_at: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::training-attempt.training-attempt'
+    > &
+      Schema.Attribute.Private;
+    passed: Schema.Attribute.Boolean &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<false>;
+    publishedAt: Schema.Attribute.DateTime;
+    role: Schema.Attribute.Enumeration<['rider', 'shopper']> & Schema.Attribute.Required;
+    score: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    total: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<'manyToOne', 'api::user.user'> & Schema.Attribute.Required;
+  };
+}
+
+export interface ApiTrainingQuestionTrainingQuestion extends Struct.CollectionTypeSchema {
+  collectionName: 'training_questions';
+  info: {
+    description: 'Quiz questions shown to newly approved riders and shoppers';
+    displayName: 'Training Question';
+    pluralName: 'training-questions';
+    singularName: 'training-question';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    correct_option: Schema.Attribute.Enumeration<['a', 'b', 'c']> & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
+    explanation: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::training-question.training-question'
+    > &
+      Schema.Attribute.Private;
+    option_a: Schema.Attribute.Text & Schema.Attribute.Required;
+    option_b: Schema.Attribute.Text & Schema.Attribute.Required;
+    option_c: Schema.Attribute.Text & Schema.Attribute.Required;
+    order: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 1;
+        },
+        number
+      >;
+    prompt: Schema.Attribute.Text & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    role: Schema.Attribute.Enumeration<['rider', 'shopper']> & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
   };
@@ -1566,6 +1658,8 @@ declare module '@strapi/strapi' {
       'api::shopper.shopper': ApiShopperShopper;
       'api::shopping-list.shopping-list': ApiShoppingListShoppingList;
       'api::subcategory.subcategory': ApiSubcategorySubcategory;
+      'api::training-attempt.training-attempt': ApiTrainingAttemptTrainingAttempt;
+      'api::training-question.training-question': ApiTrainingQuestionTrainingQuestion;
       'api::user.user': ApiUserUser;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

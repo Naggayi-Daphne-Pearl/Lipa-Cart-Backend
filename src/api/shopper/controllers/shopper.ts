@@ -1,5 +1,4 @@
 import { factories } from '@strapi/strapi';
-import { sendKycApprovedLoginEmail } from '../../../services/email';
 
 export default factories.createCoreController('api::shopper.shopper', ({ strapi }) => ({
   /**
@@ -237,18 +236,6 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       const updated = await strapi.entityService.update('api::shopper.shopper', shopper.id, {
         data: updateData,
       });
-
-      if (action === 'approve' && shopper.user?.email) {
-        try {
-          await sendKycApprovedLoginEmail(shopper.user.email, 'shopper', {
-            name: shopper.user.name,
-          });
-        } catch (emailErr: any) {
-          strapi.log.warn(
-            `[shopper.kyc] Approval email failed for shopper ${shopper.id}: ${emailErr?.message || emailErr}`,
-          );
-        }
-      }
 
       ctx.body = {
         data: {

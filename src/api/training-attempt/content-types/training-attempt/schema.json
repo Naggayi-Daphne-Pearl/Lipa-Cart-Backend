@@ -1,0 +1,49 @@
+{
+  "kind": "collectionType",
+  "collectionName": "training_attempts",
+  "info": {
+    "singularName": "training-attempt",
+    "pluralName": "training-attempts",
+    "displayName": "Training Attempt",
+    "description": "A rider or shopper's quiz submission and resulting score"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::user.user",
+      "required": true
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": ["rider", "shopper"],
+      "required": true
+    },
+    "score": {
+      "type": "integer",
+      "required": true,
+      "min": 0
+    },
+    "total": {
+      "type": "integer",
+      "required": true,
+      "min": 0
+    },
+    "passed": {
+      "type": "boolean",
+      "required": true,
+      "default": false
+    },
+    "answers": {
+      "type": "json"
+    },
+    "attempted_at": {
+      "type": "datetime",
+      "required": true
+    }
+  }
+}

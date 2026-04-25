@@ -1,0 +1,50 @@
+{
+  "kind": "collectionType",
+  "collectionName": "training_questions",
+  "info": {
+    "singularName": "training-question",
+    "pluralName": "training-questions",
+    "displayName": "Training Question",
+    "description": "Quiz questions shown to newly approved riders and shoppers"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "role": {
+      "type": "enumeration",
+      "enum": ["rider", "shopper"],
+      "required": true
+    },
+    "order": {
+      "type": "integer",
+      "required": true,
+      "min": 1
+    },
+    "prompt": {
+      "type": "text",
+      "required": true
+    },
+    "option_a": {
+      "type": "text",
+      "required": true
+    },
+    "option_b": {
+      "type": "text",
+      "required": true
+    },
+    "option_c": {
+      "type": "text",
+      "required": true
+    },
+    "correct_option": {
+      "type": "enumeration",
+      "enum": ["a", "b", "c"],
+      "required": true
+    },
+    "explanation": {
+      "type": "text"
+    }
+  }
+}

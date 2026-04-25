@@ -1,4 +1,46 @@
 import { factories } from '@strapi/strapi';
+import { checkServiceArea } from '../../../services/service-area';
+
+/**
+ * Reject address payloads that would silently break checkout downstream.
+ *
+ * The order.create flow (and the service-area middleware) requires every
+ * address to have non-empty text + valid GPS coordinates inside the delivery
+ * zone. Strapi's schema-level `required: true` only checks presence, not
+ * non-empty strings, and gps_lat/gps_lng aren't required at the schema level
+ * because we sometimes seed addresses without them. Enforce the contract here
+ * so a partially-filled form can never produce an unusable address record.
+ *
+ * Returns null when valid; otherwise an error message ready for ctx.badRequest.
+ */
+function validateAddressPayload(data: any): string | null {
+  const addressLine = typeof data?.address_line === 'string' ? data.address_line.trim() : '';
+  if (addressLine.length === 0) {
+    return 'address_line is required';
+  }
+  const city = typeof data?.city === 'string' ? data.city.trim() : '';
+  if (city.length === 0) {
+    return 'city is required';
+  }
+
+  const lat =
+    typeof data?.gps_lat === 'number'
+      ? data.gps_lat
+      : Number.parseFloat(String(data?.gps_lat ?? ''));
+  const lng =
+    typeof data?.gps_lng === 'number'
+      ? data.gps_lng
+      : Number.parseFloat(String(data?.gps_lng ?? ''));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return 'gps_lat and gps_lng are required — drop a map pin before saving the address';
+  }
+
+  const areaCheck = checkServiceArea(lat, lng);
+  if (!areaCheck.ok) {
+    return areaCheck.reason;
+  }
+  return null;
+}
 
 // Module-level helpers — kept outside the controller object so they don't have
 // to conform to Strapi's `(ctx) => Promise` controller handler signature.
@@ -63,6 +105,12 @@ export default factories.createCoreController('api::address.address', ({ strapi 
     const roleType = user.role?.type;
     if (roleType !== 'customer' && roleType !== 'admin') {
       return ctx.forbidden('Only customers can manage addresses');
+    }
+
+    const validationError = validateAddressPayload(ctx.request.body?.data);
+    if (validationError) {
+      strapi.log.warn(`[address.create] reject: ${validationError} user=${user.id}`);
+      return ctx.badRequest(validationError);
     }
 
     if (roleType === 'admin') {
@@ -170,6 +218,17 @@ export default factories.createCoreController('api::address.address', ({ strapi 
       ctx.request.body.data = {};
     }
     ctx.request.body.data.customer = customer.id;
+
+    // Validate the *merged* record so a partial PATCH can't hollow out a
+    // previously-valid address (e.g. clearing address_line, or removing GPS).
+    const merged = { ...existing, ...ctx.request.body.data };
+    const validationError = validateAddressPayload(merged);
+    if (validationError) {
+      strapi.log.warn(
+        `[address.update] reject: ${validationError} user=${user.id} address=${existing.id}`,
+      );
+      return ctx.badRequest(validationError);
+    }
 
     return super.update(ctx);
   },

@@ -41,6 +41,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
       const body = (ctx.request.body?.data ?? {}) as any;
 
       if (!body.delivery_address) {
+        strapi.log.warn(`[order.create] reject: delivery_address missing user=${customUser.id}`);
         return ctx.badRequest('delivery_address is required');
       }
 
@@ -53,14 +54,23 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         populate: ['customer'],
       });
       if (!addressRecord) {
+        strapi.log.warn(
+          `[order.create] reject: address not found user=${customUser.id} delivery_address=${body.delivery_address}`,
+        );
         return ctx.badRequest('delivery_address not found');
       }
       if (addressRecord.customer?.id !== customUser.customer?.id) {
+        strapi.log.warn(
+          `[order.create] reject: address ownership mismatch user=${customUser.id} customer=${customUser.customer?.id} address=${addressRecord.id} addressCustomer=${addressRecord.customer?.id}`,
+        );
         return ctx.forbidden('You can only deliver to your own saved addresses');
       }
 
       const areaCheck = checkServiceArea(addressRecord.gps_lat, addressRecord.gps_lng);
       if (!areaCheck.ok) {
+        strapi.log.warn(
+          `[order.create] reject: service-area user=${customUser.id} address=${addressRecord.id} lat=${addressRecord.gps_lat} lng=${addressRecord.gps_lng} reason=${areaCheck.reason}`,
+        );
         return ctx.badRequest(areaCheck.reason);
       }
 

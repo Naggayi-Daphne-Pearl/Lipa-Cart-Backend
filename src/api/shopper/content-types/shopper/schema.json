@@ -106,6 +106,9 @@
     },
     "emergency_contact_phone": {
       "type": "string"
+    },
+    "training_completed_at": {
+      "type": "datetime"
     }
   }
 }

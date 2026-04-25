@@ -87,6 +87,26 @@ export default factories.createCoreController(
         },
       });
 
+      if (passed) {
+        try {
+          const profile: any = await strapi.db.query(`api::${role}.${role}`).findOne({
+            where: { user: customUser.id },
+            select: ['id', 'training_completed_at'],
+          });
+
+          if (profile && !profile.training_completed_at) {
+            await strapi.db.query(`api::${role}.${role}`).update({
+              where: { id: profile.id },
+              data: { training_completed_at: new Date() },
+            });
+          }
+        } catch (err: any) {
+          strapi.log.warn(
+            `[training-attempt.submit] Could not flip training_completed_at for ${role} user ${customUser.id}: ${err?.message || err}`,
+          );
+        }
+      }
+
       ctx.body = {
         data: {
           id: attempt.id,

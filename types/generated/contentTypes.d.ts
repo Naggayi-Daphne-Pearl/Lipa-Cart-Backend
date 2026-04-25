@@ -955,6 +955,7 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
     total_deliveries_completed: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     total_earnings: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_ratings: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    training_completed_at: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     user: Schema.Attribute.Relation<'oneToOne', 'api::user.user'>;
@@ -1011,6 +1012,7 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     total_earnings: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
     total_orders_completed: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     total_ratings: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    training_completed_at: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     user: Schema.Attribute.Relation<'oneToOne', 'api::user.user'>;

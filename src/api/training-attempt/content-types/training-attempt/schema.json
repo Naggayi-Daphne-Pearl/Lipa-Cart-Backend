@@ -15,7 +15,8 @@
     "user": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::user.user"
+      "target": "api::user.user",
+      "required": true
     },
     "role": {
       "type": "enumeration",

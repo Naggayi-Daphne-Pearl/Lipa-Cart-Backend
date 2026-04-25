@@ -42,8 +42,25 @@ export default factories.createCoreController(
       if (!isRole(role)) {
         return ctx.badRequest('role must be "rider" or "shopper"');
       }
+      if (customUser.user_type !== role) {
+        return ctx.forbidden(
+          `Cannot submit a ${role} attempt as a ${customUser.user_type ?? 'unknown'} user`,
+        );
+      }
       if (!submittedAnswers || typeof submittedAnswers !== 'object') {
         return ctx.badRequest('answers must be an object keyed by question id');
+      }
+
+      // Block re-submission once the user has already passed for this role.
+      // Otherwise feedback (correctOption + explanation) becomes a free answer key.
+      const existingPass: any = await strapi.db
+        .query('api::training-attempt.training-attempt')
+        .findOne({
+          where: { user: customUser.id, role, passed: true },
+          orderBy: { attempted_at: 'desc' },
+        });
+      if (existingPass) {
+        return ctx.badRequest('You have already passed this training quiz.');
       }
 
       const questions: any[] = await strapi.db

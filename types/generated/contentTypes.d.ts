@@ -1125,7 +1125,7 @@ export interface ApiTrainingAttemptTrainingAttempt extends Struct.CollectionType
       >;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
-    user: Schema.Attribute.Relation<'manyToOne', 'api::user.user'>;
+    user: Schema.Attribute.Relation<'manyToOne', 'api::user.user'> & Schema.Attribute.Required;
   };
 }
 

@@ -563,11 +563,6 @@ export async function sendForgotPasswordOtpEmail(
   });
 }
 
-const RIDER_TRAINING_QUIZ_URL =
-  process.env.RIDER_TRAINING_QUIZ_URL || 'https://forms.gle/YKQTwDegDfTFCuyc7';
-const SHOPPER_TRAINING_QUIZ_URL =
-  process.env.SHOPPER_TRAINING_QUIZ_URL || 'https://forms.gle/bBm5RkhXDJ7PumPC6';
-
 export async function sendKycApprovedLoginEmail(
   to: string,
   role: 'shopper' | 'rider',
@@ -577,7 +572,6 @@ export async function sendKycApprovedLoginEmail(
   const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
   const roleLabel = role === 'shopper' ? 'shopper' : 'rider';
   const loginUrl = `${FRONTEND_URL}/login`;
-  const quizUrl = role === 'rider' ? RIDER_TRAINING_QUIZ_URL : SHOPPER_TRAINING_QUIZ_URL;
 
   const sections: EmailSection[] = [
     { kind: 'greeting', text: greeting },
@@ -587,19 +581,13 @@ export async function sendKycApprovedLoginEmail(
     },
     {
       kind: 'paragraph',
-      text: 'Before you start, please take a short training quiz. It is only 5 questions and takes about 3 minutes. You need 4 out of 5 to pass — and you can try again if you do not pass the first time.',
-    },
-    { kind: 'cta', label: 'Take the Training Quiz', url: quizUrl },
-    {
-      kind: 'paragraph',
-      muted: true,
-      text: 'After you finish the quiz, log in to the app to start working.',
+      text: 'When you log in, the app will guide you through a short training quiz (5 questions, about 3 minutes) before you start taking orders. You can retake it if you do not pass the first time.',
     },
     { kind: 'cta', label: 'Log In to LipaCart', url: loginUrl },
     {
       kind: 'notice',
       title: "You're approved",
-      body: 'Welcome to the LipaCart team. Take the quiz first, then log in to get started.',
+      body: 'Welcome to the LipaCart team. Tap the button above to log in and start your training.',
       tone: 'success',
     },
   ];

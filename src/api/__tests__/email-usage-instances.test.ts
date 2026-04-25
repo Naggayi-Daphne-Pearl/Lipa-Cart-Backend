@@ -217,6 +217,32 @@ describe('email usage instances - controllers', () => {
     expect(strapiMock.db.query).not.toHaveBeenCalled();
   });
 
+  it('does not re-send approval email when row was already approved', async () => {
+    const strapiMock = {
+      db: {
+        query: jest.fn(() => ({
+          findOne: jest.fn().mockResolvedValue({
+            id: 23,
+            user: { email: 'rider@example.com', name: 'Rider Name' },
+          }),
+        })),
+      },
+      log: { warn: jest.fn(), info: jest.fn() },
+    };
+
+    (global as any).strapi = strapiMock;
+    jest.resetModules();
+    const riderLifecycles = require('../rider/content-types/rider/lifecycles').default;
+
+    await riderLifecycles.afterUpdate({
+      result: { id: 23 },
+      params: { data: { kyc_status: 'approved' } },
+      state: { previousKycStatus: 'approved' },
+    });
+
+    expect(sendKycApprovedLoginEmailMock).not.toHaveBeenCalled();
+  });
+
   it('sends order confirmation email when payment is confirmed', async () => {
     requireAdminMock.mockResolvedValue({ customUser: { id: 900 } });
 

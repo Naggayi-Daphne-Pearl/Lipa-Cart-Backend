@@ -2,14 +2,14 @@ import { factories } from '@strapi/strapi';
 import { checkServiceArea } from '../../../services/service-area';
 
 /**
- * Reject address payloads that would silently break checkout downstream.
+ * Reject *create* payloads that would silently break checkout downstream.
  *
  * The order.create flow (and the service-area middleware) requires every
  * address to have non-empty text + valid GPS coordinates inside the delivery
  * zone. Strapi's schema-level `required: true` only checks presence, not
  * non-empty strings, and gps_lat/gps_lng aren't required at the schema level
- * because we sometimes seed addresses without them. Enforce the contract here
- * so a partially-filled form can never produce an unusable address record.
+ * because we sometimes seed addresses without them. Enforce the full contract
+ * here so a partially-filled form can never produce an unusable record.
  *
  * Returns null when valid; otherwise an error message ready for ctx.badRequest.
  */
@@ -38,6 +38,61 @@ function validateAddressPayload(data: any): string | null {
   const areaCheck = checkServiceArea(lat, lng);
   if (!areaCheck.ok) {
     return areaCheck.reason;
+  }
+  return null;
+}
+
+/**
+ * Reject *update* patches that would silently break a previously-valid record
+ * — but only on fields the caller actually touched.
+ *
+ * Validating the merged record (existing + patch) on every PATCH would lock
+ * customers out of legacy addresses created before this validator existed:
+ * any record missing city or GPS would become un-editable for unrelated
+ * fields like label / landmark / delivery_instructions. Patch-only validation
+ * preserves the "no silent hollowing-out" intent (can't blank out
+ * address_line, can't null-out one of the two GPS coords) without trapping
+ * users on legacy data they didn't create.
+ *
+ * Returns null when valid; otherwise an error message.
+ */
+function validateAddressPatch(patch: any): string | null {
+  if (patch == null) return null;
+
+  if ('address_line' in patch) {
+    const v = typeof patch.address_line === 'string' ? patch.address_line.trim() : '';
+    if (v.length === 0) {
+      return 'address_line cannot be empty';
+    }
+  }
+
+  if ('city' in patch) {
+    const v = typeof patch.city === 'string' ? patch.city.trim() : '';
+    if (v.length === 0) {
+      return 'city cannot be empty';
+    }
+  }
+
+  // GPS is a pair: touching either coord requires both to be valid and inside
+  // the service area, so we never end up with a half-pinned record.
+  const touchesLat = 'gps_lat' in patch;
+  const touchesLng = 'gps_lng' in patch;
+  if (touchesLat || touchesLng) {
+    const lat =
+      typeof patch.gps_lat === 'number'
+        ? patch.gps_lat
+        : Number.parseFloat(String(patch.gps_lat ?? ''));
+    const lng =
+      typeof patch.gps_lng === 'number'
+        ? patch.gps_lng
+        : Number.parseFloat(String(patch.gps_lng ?? ''));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return 'gps_lat and gps_lng must both be valid numbers when updating the map pin';
+    }
+    const areaCheck = checkServiceArea(lat, lng);
+    if (!areaCheck.ok) {
+      return areaCheck.reason;
+    }
   }
   return null;
 }
@@ -219,10 +274,11 @@ export default factories.createCoreController('api::address.address', ({ strapi 
     }
     ctx.request.body.data.customer = customer.id;
 
-    // Validate the *merged* record so a partial PATCH can't hollow out a
-    // previously-valid address (e.g. clearing address_line, or removing GPS).
-    const merged = { ...existing, ...ctx.request.body.data };
-    const validationError = validateAddressPayload(merged);
+    // Patch-level validation: only inspect fields the caller submitted. This
+    // preserves the "no silent hollowing-out" intent (can't blank out
+    // address_line, can't half-pin GPS) while letting customers edit unrelated
+    // fields on legacy records that pre-date the GPS-required contract.
+    const validationError = validateAddressPatch(ctx.request.body.data);
     if (validationError) {
       strapi.log.warn(
         `[address.update] reject: ${validationError} user=${user.id} address=${existing.id}`,

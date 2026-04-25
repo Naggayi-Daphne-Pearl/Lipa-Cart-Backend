@@ -8,5 +8,13 @@ export default {
         policies: [],
       },
     },
+    {
+      method: 'GET',
+      path: '/training-attempts/status',
+      handler: 'training-attempt.status',
+      config: {
+        policies: [],
+      },
+    },
   ],
 };

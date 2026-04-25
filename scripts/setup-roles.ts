@@ -131,6 +131,7 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
 
       // Training quiz (post-KYC onboarding)
       { action: 'submit', contentType: 'api::training-attempt.training-attempt' },
+      { action: 'status', contentType: 'api::training-attempt.training-attempt' },
 
       // Upload media (KYC documents, substitute photos)
       { action: 'upload', contentType: 'plugin::upload.content-api' },
@@ -179,6 +180,7 @@ const ROLE_DEFINITIONS: Record<string, RoleDefinition> = {
 
       // Training quiz (post-KYC onboarding)
       { action: 'submit', contentType: 'api::training-attempt.training-attempt' },
+      { action: 'status', contentType: 'api::training-attempt.training-attempt' },
 
       // Upload media (KYC documents, delivery proof photos)
       { action: 'upload', contentType: 'plugin::upload.content-api' },

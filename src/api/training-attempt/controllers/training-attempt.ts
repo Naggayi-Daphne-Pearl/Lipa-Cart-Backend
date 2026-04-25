@@ -137,5 +137,38 @@ export default factories.createCoreController(
         },
       };
     },
+
+    async status(ctx: any) {
+      const authUser = ctx.state.user;
+      if (!authUser) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      const customUser = await getAuthenticatedCustomUser(strapi, ctx);
+      if (!customUser) {
+        return ctx.notFound('User profile not found');
+      }
+
+      const role = customUser.user_type;
+      if (!isRole(role)) {
+        ctx.body = { data: { passed: false, completed_at: null, role: role ?? null } };
+        return;
+      }
+
+      const earliestPass: any = await strapi.db
+        .query('api::training-attempt.training-attempt')
+        .findOne({
+          where: { user: customUser.id, role, passed: true },
+          orderBy: { attempted_at: 'asc' },
+        });
+
+      ctx.body = {
+        data: {
+          role,
+          passed: Boolean(earliestPass),
+          completed_at: earliestPass?.attempted_at ?? null,
+        },
+      };
+    },
   }),
 );

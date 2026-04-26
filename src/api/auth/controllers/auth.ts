@@ -217,6 +217,11 @@ export default {
 
       const user = customUser[0];
 
+      // Admins must use the dedicated /auth/admin/login endpoint.
+      if (user.user_type === 'admin') {
+        return ctx.badRequest('Admin accounts must sign in at admin.lipacart.com.');
+      }
+
       // Get customer ID if user is a customer
       let customerId = null;
       if (user.user_type === 'customer') {
@@ -351,6 +356,80 @@ export default {
     } catch (error) {
       console.error('Login error:', error);
       ctx.throw(500, 'Failed to login');
+    }
+  },
+
+  /**
+   * Admin-only sign in. Same phone+password flow as /auth/login but only
+   * succeeds when user.user_type === 'admin'. Used by admin.lipacart.com.
+   */
+  async adminLogin(ctx: any) {
+    try {
+      const { phone, password, rememberMe = true } = ctx.request.body ?? {};
+
+      if (!phone || !password) {
+        return ctx.badRequest('Phone and password are required');
+      }
+
+      const authUser = await strapi.query('plugin::users-permissions.user').findOne({
+        where: { username: phone },
+        populate: { role: true },
+      });
+
+      if (!authUser) {
+        return ctx.badRequest('Invalid phone or password');
+      }
+
+      const validPassword = await strapi.plugins[
+        'users-permissions'
+      ].services.user.validatePassword(password, authUser.password);
+
+      if (!validPassword) {
+        return ctx.badRequest('Invalid phone or password');
+      }
+
+      if (authUser.blocked) {
+        return ctx.badRequest('Your account has been blocked');
+      }
+
+      const customUsers: any = await strapi.entityService.findMany('api::user.user', {
+        filters: { phone },
+        populate: { profile_photo: true },
+      });
+
+      if (!customUsers || customUsers.length === 0) {
+        return ctx.notFound('User profile not found');
+      }
+
+      const user = customUsers[0];
+
+      if (user.user_type !== 'admin') {
+        return ctx.forbidden('This account is not an administrator.');
+      }
+
+      const session = await issueSessionTokens(strapi, ctx, authUser, user, rememberMe !== false);
+
+      ctx.body = {
+        jwt: session.jwt,
+        refreshToken: session.refreshToken,
+        session: {
+          rememberMe: session.rememberMe,
+          accessTokenExpiresIn: session.accessTokenExpiresIn,
+          refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
+        },
+        user: {
+          id: user.id,
+          document_id: user.documentId,
+          phone: user.phone,
+          name: user.name ?? null,
+          email: user.email ?? null,
+          user_type: 'admin',
+          profile_photo: user.profile_photo?.url ?? null,
+        },
+      };
+    } catch (error) {
+      console.error('Admin login error:', error);
+      ctx.throw(500, 'Failed to sign in');
     }
   },
 

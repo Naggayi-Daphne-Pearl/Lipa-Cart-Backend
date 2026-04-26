@@ -6,9 +6,9 @@ export default {
   routes: [
     {
       method: 'GET',
-      path: '/products/csv-template',
-      handler: 'product.csvTemplate',
-      config: { auth: false, policies: [] },
+      path: '/products/xlsx-template',
+      handler: 'product.xlsxTemplate',
+      config: { policies: [] },
     },
     {
       method: 'GET',

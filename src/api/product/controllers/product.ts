@@ -1,85 +1,57 @@
 import { factories } from '@strapi/strapi';
-import https from 'https';
-import http from 'http';
+import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { isAllowedUploadUrl } from '../../../services/upload-url-allowlist';
+import {
+  TEMPLATE_HEADERS,
+  TemplateRow,
+  generateTemplate,
+  parseWorkbook,
+  extractZipImages,
+} from '../../../services/product-bulk-import';
 
-const TEMPLATE_HEADERS = [
-  'name',
-  'description',
-  'estimated_price',
-  'common_units',
-  'category_id',
-  'image_url',
-];
-
-/**
- * Minimal CSV parser that supports quoted fields with embedded commas and
- * escaped double quotes ("") inside quoted fields. Returns an array of rows
- * (each row a string[]). Discards a trailing empty line.
- */
-function parseCsv(input: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let inQuotes = false;
-  for (let i = 0; i < input.length; i++) {
-    const c = input[i];
-    if (inQuotes) {
-      if (c === '"' && input[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        cell += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      row.push(cell);
-      cell = '';
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && input[i + 1] === '\n') i++;
-      row.push(cell);
-      cell = '';
-      if (row.length > 1 || row[0] !== '') rows.push(row);
-      row = [];
-    } else {
-      cell += c;
-    }
-  }
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows;
+async function readFile(file: any): Promise<Buffer> {
+  // Strapi v5 multipart files come through as either Buffer-bearing or
+  // path-bearing structs depending on the body parser config. Normalise.
+  if (file?.buffer && Buffer.isBuffer(file.buffer)) return file.buffer;
+  if (file?.filepath) return fs.promises.readFile(file.filepath);
+  if (file?.path) return fs.promises.readFile(file.path);
+  throw new Error('Could not read uploaded file');
 }
 
-/**
- * Pull a remote URL into Strapi's upload plugin. Returns the new media id.
- * The URL must satisfy isAllowedUploadUrl OR be a public Cloudinary URL —
- * but we still cap the bytes downloaded to avoid an attacker pointing us
- * at a 5GB file as a DoS vector.
- */
-async function importImageFromUrl(
+async function uploadBufferToCloudinary(
   strapi: any,
+  buffer: Buffer,
+  filename: string,
+  mime: string,
+): Promise<number | null> {
+  const fileService = strapi.plugin('upload').service('upload');
+  const uploaded = await fileService.upload({
+    data: {},
+    files: {
+      path: '',
+      name: filename,
+      type: mime,
+      size: buffer.length,
+      stream: Readable.from(buffer),
+      buffer,
+    },
+  });
+  const created = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+  return created?.id ?? null;
+}
+
+async function fetchRemoteImageBuffer(
   url: string,
   maxBytes: number,
-): Promise<number | null> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+): Promise<{ buffer: Buffer; mime: string; filename: string } | null> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:') return null;
 
-  const client = parsed.protocol === 'https:' ? https : http;
-
+  const https = await import('https');
   const buffer = await new Promise<Buffer>((resolve, reject) => {
-    const req = client.get(url, (res) => {
+    const req = https.get(url, (res) => {
       if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
         reject(new Error(`Upstream ${res.statusCode}`));
         return;
@@ -104,42 +76,33 @@ async function importImageFromUrl(
   const filename = decodeURIComponent(path.basename(parsed.pathname)) || 'product.jpg';
   const ext = path.extname(filename).toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+  return { buffer, mime, filename };
+}
 
-  // Strapi upload plugin accepts a temp file or a stream. Use the upload
-  // service's add() to register the asset; the configured Cloudinary
-  // provider does the actual push.
-  const fileService = strapi.plugin('upload').service('upload');
-  const uploaded = await fileService.upload({
-    data: {},
-    files: {
-      path: '',
-      name: filename,
-      type: mime,
-      size: buffer.length,
-      stream: Readable.from(buffer),
-      buffer,
-    },
+async function requireAdmin(ctx: any, strapi: any) {
+  const authUser = ctx.state.user;
+  if (!authUser) {
+    ctx.unauthorized('Authentication required');
+    return null;
+  }
+  const requester: any = await strapi.db.query('api::user.user').findOne({
+    where: { phone: authUser.username },
   });
-
-  const created = Array.isArray(uploaded) ? uploaded[0] : uploaded;
-  return created?.id ?? null;
+  if (!requester || requester.user_type !== 'admin') {
+    ctx.forbidden('Admin only');
+    return null;
+  }
+  return requester;
 }
 
 export default factories.createCoreController('api::product.product', ({ strapi }) => ({
   /**
-   * GET /products/category-options — admin-only id/name list, used by the
-   * bulk-import dialog to surface valid category_id values without forcing
-   * an extra round-trip to /api/categories with full populate.
+   * GET /products/category-options — admin id/name list of active categories.
+   * Used by /products/xlsx-template at generation time.
    */
   async categoryOptions(ctx: any) {
-    const authUser = ctx.state.user;
-    if (!authUser) return ctx.unauthorized('Authentication required');
-    const requester: any = await strapi.db.query('api::user.user').findOne({
-      where: { phone: authUser.username },
-    });
-    if (!requester || requester.user_type !== 'admin') {
-      return ctx.forbidden('Admin only');
-    }
+    const admin = await requireAdmin(ctx, strapi);
+    if (!admin) return;
 
     const categories: any[] = await strapi.db.query('api::category.category').findMany({
       select: ['id', 'documentId', 'name'],
@@ -149,117 +112,154 @@ export default factories.createCoreController('api::product.product', ({ strapi 
     });
 
     ctx.body = {
-      data: categories.map((c) => ({
-        id: c.documentId,
-        name: c.name,
-      })),
+      data: categories.map((c) => ({ id: c.documentId, name: c.name })),
     };
   },
 
   /**
-   * GET /products/csv-template — returns the canonical CSV template.
+   * GET /products/xlsx-template — admin-only. Generates an .xlsx with a
+   * category_name dropdown backed by the live category list, so admins can't
+   * fat-finger a category that doesn't exist.
    */
-  async csvTemplate(ctx: any) {
-    const sample = [
-      'Avocado (Hass)',
-      'Locally grown ripe Hass avocado',
-      '4500',
-      'piece',
-      '<paste-category-documentId-here>',
-      'https://res.cloudinary.com/<cloud_name>/image/upload/...avocado.jpg',
-    ]
-      .map((c) => (c.includes(',') ? `"${c.replace(/"/g, '""')}"` : c))
-      .join(',');
+  async xlsxTemplate(ctx: any) {
+    const admin = await requireAdmin(ctx, strapi);
+    if (!admin) return;
 
-    ctx.set('Content-Type', 'text/csv; charset=utf-8');
-    ctx.set('Content-Disposition', 'attachment; filename="products-template.csv"');
-    ctx.body = `${TEMPLATE_HEADERS.join(',')}\n${sample}\n`;
+    const categories: any[] = await strapi.db.query('api::category.category').findMany({
+      select: ['name'],
+      where: { is_active: true },
+      orderBy: { name: 'asc' },
+      limit: 500,
+    });
+    const names = categories.map((c) => c.name as string).filter(Boolean);
+
+    const buffer = await generateTemplate(names);
+    ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    ctx.set('Content-Disposition', 'attachment; filename="products-template.xlsx"');
+    ctx.body = buffer;
   },
 
   /**
-   * POST /products/bulk-import — admin only.
-   * Body: { csv: "<raw csv text>" }
-   * Returns: { created, skipped, errors: [{ row, error }] }
+   * POST /products/bulk-import — admin only. Multipart form-data:
+   *   - xlsx (required): the filled template
+   *   - zip  (optional): a zip of product images, referenced by
+   *                       image_filename in the workbook
+   *   - dry_run (optional form field): "true" to validate without writing
    *
-   * Image URLs go through the Cloudinary allowlist OR are imported through
-   * Strapi's upload plugin (which routes them to our Cloudinary tenant).
-   * Hard cap of 200 rows per request to keep the request bounded; chunk
-   * larger imports client-side.
+   * Image source priority per row:
+   *   1. image_filename in the zip (preferred — bundle approach)
+   *   2. image_url (Cloudinary tenant only — back-compat)
+   *
+   * Returns { dry_run, created, skipped, total, errors[], unused_zip_files[] }.
    */
   async bulkImport(ctx: any) {
-    const authUser = ctx.state.user;
-    if (!authUser) return ctx.unauthorized('Authentication required');
+    const admin = await requireAdmin(ctx, strapi);
+    if (!admin) return;
 
-    const requester: any = await strapi.db.query('api::user.user').findOne({
-      where: { phone: authUser.username },
+    const files = ctx.request.files ?? {};
+    const xlsxFile = (files.xlsx ?? files['xlsx[]']) as any;
+    const zipFile = (files.zip ?? files['zip[]']) as any;
+    if (!xlsxFile) {
+      return ctx.badRequest('xlsx file is required (multipart field "xlsx")');
+    }
+
+    const dryRun =
+      String(ctx.request.body?.dry_run ?? '').toLowerCase() === 'true' ||
+      String(ctx.query?.dry_run ?? '').toLowerCase() === 'true';
+
+    let xlsxBuf: Buffer;
+    try {
+      xlsxBuf = await readFile(xlsxFile);
+    } catch (e: any) {
+      return ctx.badRequest(`Failed to read xlsx: ${e?.message ?? 'unknown'}`);
+    }
+
+    let parsed: { rows: TemplateRow[]; rowNumbers: number[] };
+    try {
+      parsed = await parseWorkbook(xlsxBuf);
+    } catch (e: any) {
+      return ctx.badRequest(`xlsx parse error: ${e?.message ?? 'unknown'}`);
+    }
+
+    if (parsed.rows.length === 0) {
+      return ctx.badRequest('xlsx has no data rows');
+    }
+    if (parsed.rows.length > 200) {
+      return ctx.badRequest('Max 200 rows per import. Split the file.');
+    }
+
+    let zipImages = new Map<string, { buffer: Buffer; mime: string }>();
+    const usedZipKeys = new Set<string>();
+    if (zipFile) {
+      try {
+        const zipBuf = await readFile(zipFile);
+        zipImages = extractZipImages(zipBuf);
+      } catch (e: any) {
+        return ctx.badRequest(`zip parse error: ${e?.message ?? 'unknown'}`);
+      }
+    }
+
+    // Pre-load active categories for case-insensitive name → id resolution.
+    const categories: any[] = await strapi.db.query('api::category.category').findMany({
+      select: ['id', 'name'],
+      where: { is_active: true },
+      limit: 500,
     });
-    if (!requester || requester.user_type !== 'admin') {
-      return ctx.forbidden('Admin only');
+    const categoryByName = new Map<string, number>();
+    for (const c of categories) {
+      categoryByName.set((c.name as string).trim().toLowerCase(), c.id);
     }
 
-    const csv = ctx.request.body?.csv;
-    const dryRun = Boolean(ctx.request.body?.dry_run ?? ctx.query?.dry_run);
-    if (typeof csv !== 'string' || csv.trim().length === 0) {
-      return ctx.badRequest('csv field (raw text) is required');
-    }
-
-    const rows = parseCsv(csv);
-    if (rows.length < 2) {
-      return ctx.badRequest('CSV must include a header row and at least one product row');
-    }
-
-    const headers = rows[0].map((h) => h.trim().toLowerCase());
-    const expected = TEMPLATE_HEADERS.map((h) => h.toLowerCase());
-    const missing = expected.filter((h) => !headers.includes(h) && h !== 'image_url');
-    if (missing.length > 0) {
-      return ctx.badRequest(`Missing required columns: ${missing.join(', ')}`);
-    }
-
-    const dataRows = rows.slice(1);
-    if (dataRows.length > 200) {
-      return ctx.badRequest('Max 200 rows per import. Split the file and try again.');
-    }
-
-    const idx = (col: string) => headers.indexOf(col);
     const maxImageBytes = parseInt(process.env.UPLOAD_MAX_BYTES ?? '', 10) || 10 * 1024 * 1024;
 
     let created = 0;
     const errors: Array<{ row: number; error: string }> = [];
 
-    for (let i = 0; i < dataRows.length; i++) {
-      const r = dataRows[i];
-      const rowNumber = i + 2;
-      const name = r[idx('name')]?.trim();
-      const description = r[idx('description')]?.trim() ?? '';
-      const priceRaw = r[idx('estimated_price')]?.trim();
-      const unitsRaw = r[idx('common_units')]?.trim() ?? '';
-      const categoryId = r[idx('category_id')]?.trim();
-      const imageUrl = idx('image_url') >= 0 ? r[idx('image_url')]?.trim() : '';
+    for (let i = 0; i < parsed.rows.length; i++) {
+      const row = parsed.rows[i];
+      const rowNumber = parsed.rowNumbers[i];
 
+      const name = row.name?.trim();
       if (!name) {
         errors.push({ row: rowNumber, error: 'name is required' });
         continue;
       }
+
+      const priceRaw = row.estimated_price?.trim();
       const price = Number(priceRaw);
       if (!Number.isFinite(price) || price < 0) {
         errors.push({ row: rowNumber, error: 'estimated_price must be a positive number' });
         continue;
       }
-      if (!categoryId) {
-        errors.push({ row: rowNumber, error: 'category_id is required' });
+
+      const categoryNameRaw = row.category_name?.trim();
+      if (!categoryNameRaw) {
+        errors.push({ row: rowNumber, error: 'category_name is required' });
         continue;
       }
-      const category: any = await strapi.db
-        .query('api::category.category')
-        .findOne({ where: { documentId: categoryId } });
-      if (!category) {
-        errors.push({ row: rowNumber, error: `unknown category_id "${categoryId}"` });
+      const categoryId = categoryByName.get(categoryNameRaw.toLowerCase());
+      if (!categoryId) {
+        errors.push({
+          row: rowNumber,
+          error: `unknown category "${categoryNameRaw}"`,
+        });
         continue;
       }
 
-      // Validate image URL up front. We only actually fetch the bytes on the
-      // real run — dry runs skip the network round-trip.
-      if (imageUrl && !isAllowedUploadUrl(imageUrl)) {
+      // Validate image references up front (cheap) before doing any uploads.
+      const imageFilename = row.image_filename?.trim() ?? '';
+      const imageUrl = row.image_url?.trim() ?? '';
+      let zipKey: string | null = null;
+      if (imageFilename) {
+        zipKey = imageFilename.toLowerCase();
+        if (!zipImages.has(zipKey)) {
+          errors.push({
+            row: rowNumber,
+            error: `image "${imageFilename}" not found in uploaded zip`,
+          });
+          continue;
+        }
+      } else if (imageUrl && !isAllowedUploadUrl(imageUrl)) {
         errors.push({
           row: rowNumber,
           error: 'image_url must be a Cloudinary URL on our tenant',
@@ -268,29 +268,38 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       }
 
       if (dryRun) {
-        // All checks above passed; nothing else to validate without writing.
+        if (zipKey) usedZipKeys.add(zipKey);
         created++;
         continue;
       }
 
+      // Resolve image — zip wins, URL is fallback.
       let imageId: number | null = null;
-      if (imageUrl) {
-        try {
-          imageId = await importImageFromUrl(strapi, imageUrl, maxImageBytes);
-          if (!imageId) {
-            errors.push({ row: rowNumber, error: 'image fetch failed' });
-            continue;
+      try {
+        if (zipKey) {
+          const entry = zipImages.get(zipKey)!;
+          imageId = await uploadBufferToCloudinary(strapi, entry.buffer, imageFilename, entry.mime);
+          usedZipKeys.add(zipKey);
+        } else if (imageUrl) {
+          const fetched = await fetchRemoteImageBuffer(imageUrl, maxImageBytes);
+          if (fetched) {
+            imageId = await uploadBufferToCloudinary(
+              strapi,
+              fetched.buffer,
+              fetched.filename,
+              fetched.mime,
+            );
           }
-        } catch (err: any) {
-          errors.push({
-            row: rowNumber,
-            error: `image fetch failed: ${err?.message ?? 'unknown'}`,
-          });
-          continue;
         }
+      } catch (err: any) {
+        errors.push({
+          row: rowNumber,
+          error: `image upload failed: ${err?.message ?? 'unknown'}`,
+        });
+        continue;
       }
 
-      const units = unitsRaw
+      const units = (row.common_units?.trim() ?? '')
         .split('|')
         .map((u) => u.trim())
         .filter((u) => u.length > 0);
@@ -299,10 +308,10 @@ export default factories.createCoreController('api::product.product', ({ strapi 
         await strapi.entityService.create('api::product.product', {
           data: {
             name,
-            description,
+            description: row.description?.trim() ?? '',
             estimated_price: price,
             common_units: units.length > 0 ? units : ['piece'],
-            category: category.id,
+            category: categoryId,
             ...(imageId ? { image: imageId } : {}),
             is_active: true,
           },
@@ -316,14 +325,20 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       }
     }
 
+    const unusedZipFiles = Array.from(zipImages.keys()).filter((k) => !usedZipKeys.has(k));
+
     ctx.body = {
       data: {
         dry_run: dryRun,
         created,
         skipped: errors.length,
-        total: dataRows.length,
+        total: parsed.rows.length,
         errors,
+        unused_zip_files: unusedZipFiles,
       },
     };
   },
 }));
+
+// Re-export for tests / other callers if ever needed.
+export { TEMPLATE_HEADERS };

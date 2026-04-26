@@ -1,8 +1,13 @@
 import { factories } from '@strapi/strapi';
-import fs from 'fs';
-import path from 'path';
-import { Readable } from 'stream';
 import { isAllowedUploadUrl } from '../../../services/upload-url-allowlist';
+import {
+  readFile,
+  uploadBufferToCloudinary,
+  fetchRemoteImageBuffer,
+  requireAdmin,
+  parseDryRun,
+  maxImageBytes,
+} from '../../../services/bulk-import-helpers';
 import {
   TEMPLATE_HEADERS,
   TemplateRow,
@@ -10,90 +15,6 @@ import {
   parseWorkbook,
   extractZipImages,
 } from '../../../services/product-bulk-import';
-
-async function readFile(file: any): Promise<Buffer> {
-  // Strapi v5 multipart files come through as either Buffer-bearing or
-  // path-bearing structs depending on the body parser config. Normalise.
-  if (file?.buffer && Buffer.isBuffer(file.buffer)) return file.buffer;
-  if (file?.filepath) return fs.promises.readFile(file.filepath);
-  if (file?.path) return fs.promises.readFile(file.path);
-  throw new Error('Could not read uploaded file');
-}
-
-async function uploadBufferToCloudinary(
-  strapi: any,
-  buffer: Buffer,
-  filename: string,
-  mime: string,
-): Promise<number | null> {
-  const fileService = strapi.plugin('upload').service('upload');
-  const uploaded = await fileService.upload({
-    data: {},
-    files: {
-      path: '',
-      name: filename,
-      type: mime,
-      size: buffer.length,
-      stream: Readable.from(buffer),
-      buffer,
-    },
-  });
-  const created = Array.isArray(uploaded) ? uploaded[0] : uploaded;
-  return created?.id ?? null;
-}
-
-async function fetchRemoteImageBuffer(
-  url: string,
-  maxBytes: number,
-): Promise<{ buffer: Buffer; mime: string; filename: string } | null> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== 'https:') return null;
-
-  const https = await import('https');
-  const buffer = await new Promise<Buffer>((resolve, reject) => {
-    const req = https.get(url, (res) => {
-      if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-        reject(new Error(`Upstream ${res.statusCode}`));
-        return;
-      }
-      const chunks: Buffer[] = [];
-      let total = 0;
-      res.on('data', (chunk: Buffer) => {
-        total += chunk.length;
-        if (total > maxBytes) {
-          req.destroy(new Error('image exceeds size limit'));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new Error('image fetch timeout')));
-  });
-
-  const filename = decodeURIComponent(path.basename(parsed.pathname)) || 'product.jpg';
-  const ext = path.extname(filename).toLowerCase();
-  const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-  return { buffer, mime, filename };
-}
-
-async function requireAdmin(ctx: any, strapi: any) {
-  const authUser = ctx.state.user;
-  if (!authUser) {
-    ctx.unauthorized('Authentication required');
-    return null;
-  }
-  const requester: any = await strapi.db.query('api::user.user').findOne({
-    where: { phone: authUser.username },
-  });
-  if (!requester || requester.user_type !== 'admin') {
-    ctx.forbidden('Admin only');
-    return null;
-  }
-  return requester;
-}
 
 export default factories.createCoreController('api::product.product', ({ strapi }) => ({
   /**
@@ -219,9 +140,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       return ctx.badRequest('xlsx file is required (multipart field "xlsx")');
     }
 
-    const dryRun =
-      String(ctx.request.body?.dry_run ?? '').toLowerCase() === 'true' ||
-      String(ctx.query?.dry_run ?? '').toLowerCase() === 'true';
+    const dryRun = parseDryRun(ctx);
 
     let xlsxBuf: Buffer;
     try {
@@ -266,7 +185,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       categoryByName.set((c.name as string).trim().toLowerCase(), c.id);
     }
 
-    const maxImageBytes = parseInt(process.env.UPLOAD_MAX_BYTES ?? '', 10) || 10 * 1024 * 1024;
+    const maxBytes = maxImageBytes();
 
     let created = 0;
     let imagesAttached = 0;
@@ -349,7 +268,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
           imageId = await uploadBufferToCloudinary(strapi, entry.buffer, imageFilename, entry.mime);
           usedZipKeys.add(zipKey);
         } else if (imageUrl) {
-          const fetched = await fetchRemoteImageBuffer(imageUrl, maxImageBytes);
+          const fetched = await fetchRemoteImageBuffer(imageUrl, maxBytes);
           if (fetched) {
             imageId = await uploadBufferToCloudinary(
               strapi,

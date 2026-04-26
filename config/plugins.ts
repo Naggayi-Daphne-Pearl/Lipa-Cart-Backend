@@ -8,8 +8,14 @@ export default ({ env }) => ({
         api_secret: env('CLOUDINARY_SECRET'),
       },
       actionOptions: {
-        upload: {},
-        uploadStream: {},
+        upload: {
+          timeout: env.int('CLOUDINARY_UPLOAD_TIMEOUT_MS', 120000),
+          resource_type: 'auto',
+        },
+        uploadStream: {
+          timeout: env.int('CLOUDINARY_UPLOAD_TIMEOUT_MS', 120000),
+          resource_type: 'auto',
+        },
         delete: {},
       },
       // Hard cap before bytes hit Cloudinary; keep in sync with the

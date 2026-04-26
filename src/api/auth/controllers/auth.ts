@@ -404,7 +404,10 @@ export default {
       const user = customUsers[0];
 
       if (user.user_type !== 'admin') {
-        return ctx.forbidden('This account is not an administrator.');
+        // Return the same generic error as bad credentials so this endpoint
+        // can't be abused as an oracle for valid customer/shopper/rider
+        // phone+password pairs.
+        return ctx.badRequest('Invalid phone or password');
       }
 
       const session = await issueSessionTokens(strapi, ctx, authUser, user, rememberMe !== false);

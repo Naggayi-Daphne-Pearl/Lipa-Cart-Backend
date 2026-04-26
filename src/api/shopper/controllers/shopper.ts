@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { firstInvalidUrl } from '../../../services/upload-url-allowlist';
 
 export default factories.createCoreController('api::shopper.shopper', ({ strapi }) => ({
   /**
@@ -42,6 +43,11 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       // Validate required fields
       if (!id_number || !id_photo_url || !face_photo_url) {
         return ctx.badRequest('id_number, id_photo_url, and face_photo_url are required');
+      }
+
+      const badField = firstInvalidUrl({ id_photo_url, face_photo_url });
+      if (badField) {
+        return ctx.badRequest(`${badField} must be a Cloudinary URL uploaded through this app`);
       }
 
       // Find the custom user record for this user
@@ -235,13 +241,16 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       if (action === 'approve') {
         updateData.kyc_status = 'approved';
         updateData.is_verified = true;
+        updateData.kyc_rejection_reason = null;
         updateData.kyc_more_info_requested_fields = null;
       } else if (action === 'reject') {
         updateData.kyc_status = 'rejected';
+        updateData.is_verified = false;
         updateData.kyc_rejection_reason = rejection_reason || 'No reason provided';
         updateData.kyc_more_info_requested_fields = null;
       } else {
         updateData.kyc_status = 'more_info_requested';
+        updateData.is_verified = false;
         updateData.kyc_rejection_reason = rejection_reason || null;
         updateData.kyc_more_info_requested_fields = fields_to_resubmit;
       }

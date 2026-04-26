@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { firstInvalidUrl } from '../../../services/upload-url-allowlist';
 
 export default factories.createCoreController('api::rider.rider', ({ strapi }) => ({
   /**
@@ -51,6 +52,15 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
 
       if (!vehicle_type || !license_number) {
         return ctx.badRequest('vehicle_type and license_number are required');
+      }
+
+      const badField = firstInvalidUrl({
+        id_photo_url,
+        face_photo_url,
+        license_photo_url,
+      });
+      if (badField) {
+        return ctx.badRequest(`${badField} must be a Cloudinary URL uploaded through this app`);
       }
 
       // Find the custom user record
@@ -234,13 +244,16 @@ export default factories.createCoreController('api::rider.rider', ({ strapi }) =
       if (action === 'approve') {
         updateData.kyc_status = 'approved';
         updateData.is_verified = true;
+        updateData.kyc_rejection_reason = null;
         updateData.kyc_more_info_requested_fields = null;
       } else if (action === 'reject') {
         updateData.kyc_status = 'rejected';
+        updateData.is_verified = false;
         updateData.kyc_rejection_reason = rejection_reason || 'No reason provided';
         updateData.kyc_more_info_requested_fields = null;
       } else {
         updateData.kyc_status = 'more_info_requested';
+        updateData.is_verified = false;
         updateData.kyc_rejection_reason = rejection_reason || null;
         updateData.kyc_more_info_requested_fields = fields_to_resubmit;
       }

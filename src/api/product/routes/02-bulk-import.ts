@@ -12,6 +12,12 @@ export default {
     },
     {
       method: 'GET',
+      path: '/products/xlsx-export',
+      handler: 'product.xlsxExport',
+      config: { policies: [] },
+    },
+    {
+      method: 'GET',
       path: '/products/category-options',
       handler: 'product.categoryOptions',
       config: { policies: [] },

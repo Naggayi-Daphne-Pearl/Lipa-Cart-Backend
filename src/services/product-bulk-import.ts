@@ -39,8 +39,14 @@ const SAMPLE_ROW: TemplateRow = {
 /**
  * Build an .xlsx with a dropdown-validated category_name column.
  * Pass the current list of category names so the dropdown stays in sync.
+ *
+ * `prefilledRows` defaults to a single instructional sample row. Pass an
+ * array of TemplateRow to export the current catalogue in template shape.
  */
-export async function generateTemplate(categoryNames: string[]): Promise<Buffer> {
+export async function generateTemplate(
+  categoryNames: string[],
+  prefilledRows: TemplateRow[] = [SAMPLE_ROW],
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'LipaCart Admin';
   wb.created = new Date();
@@ -51,7 +57,9 @@ export async function generateTemplate(categoryNames: string[]): Promise<Buffer>
     key: h,
     width: h === 'description' || h === 'image_url' ? 36 : 20,
   }));
-  products.addRow(SAMPLE_ROW);
+  for (const row of prefilledRows) {
+    products.addRow(row);
+  }
 
   // Header style.
   products.getRow(1).font = { bold: true };

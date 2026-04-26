@@ -140,6 +140,62 @@ export default factories.createCoreController('api::product.product', ({ strapi 
   },
 
   /**
+   * GET /products/xlsx-export — admin-only. Pulls the current active catalog
+   * and returns it as an .xlsx in the same shape as the import template, so
+   * admins can use it as a backup or as a reference when filling new rows.
+   *
+   * Note: re-importing this file CREATES new products (the bulk-import flow
+   * has no upsert path). It is a read-only snapshot, not a sync mechanism.
+   */
+  async xlsxExport(ctx: any) {
+    const admin = await requireAdmin(ctx, strapi);
+    if (!admin) return;
+
+    const [categories, products] = await Promise.all([
+      strapi.db.query('api::category.category').findMany({
+        select: ['name'],
+        where: { is_active: true },
+        orderBy: { name: 'asc' },
+        limit: 500,
+      }) as Promise<any[]>,
+      strapi.db.query('api::product.product').findMany({
+        select: ['name', 'description', 'estimated_price', 'common_units'],
+        populate: { category: { select: ['name'] }, image: { select: ['url'] } },
+        where: { is_active: true },
+        orderBy: { name: 'asc' },
+        limit: 1000,
+      }) as Promise<any[]>,
+    ]);
+
+    const names = categories.map((c) => c.name as string).filter(Boolean);
+
+    const rows = products.map((p) => {
+      const units = Array.isArray(p.common_units)
+        ? (p.common_units as unknown[]).map((u) => String(u).trim()).filter(Boolean)
+        : typeof p.common_units === 'string'
+          ? [p.common_units as string]
+          : [];
+      return {
+        name: (p.name ?? '').toString(),
+        description: (p.description ?? '').toString(),
+        estimated_price: p.estimated_price != null ? p.estimated_price.toString() : '',
+        common_units: units.join('|'),
+        category_name: (p.category?.name ?? '').toString(),
+        image_filename: '',
+        image_url: (p.image?.url ?? '').toString(),
+      };
+    });
+
+    const buffer = await generateTemplate(names, rows);
+    ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    ctx.set(
+      'Content-Disposition',
+      `attachment; filename="products-export-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+    );
+    ctx.body = buffer;
+  },
+
+  /**
    * POST /products/bulk-import — admin only. Multipart form-data:
    *   - xlsx (required): the filled template
    *   - zip  (optional): a zip of product images, referenced by

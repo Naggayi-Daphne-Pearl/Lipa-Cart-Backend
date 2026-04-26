@@ -149,7 +149,11 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       return ctx.badRequest(`Failed to read xlsx: ${e?.message ?? 'unknown'}`);
     }
 
-    let parsed: { rows: TemplateRow[]; rowNumbers: number[] };
+    let parsed: {
+      rows: TemplateRow[];
+      rowNumbers: number[];
+      embeddedImagesByRow: Map<number, { buffer: Buffer; mime: string; filename: string }>;
+    };
     try {
       parsed = await parseWorkbook(xlsxBuf);
     } catch (e: any) {
@@ -225,8 +229,12 @@ export default factories.createCoreController('api::product.product', ({ strapi 
 
       // Validate image references up front (cheap) before doing any uploads.
       const imageFilename = row.image_filename?.trim() ?? '';
+      const normalizedImageFilename =
+        imageFilename.split('/').pop()?.split('\\').pop() ?? imageFilename;
       const imageUrl = row.image_url?.trim() ?? '';
-      const requestsImage = imageFilename.length > 0 || imageUrl.length > 0;
+      const embeddedImage = parsed.embeddedImagesByRow.get(rowNumber) ?? null;
+      const requestsImage =
+        imageFilename.length > 0 || imageUrl.length > 0 || embeddedImage != null;
       if (requestsImage) rowsRequestingImage++;
 
       let zipKey: string | null = null;
@@ -238,7 +246,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
           });
           continue;
         }
-        zipKey = imageFilename.toLowerCase();
+        zipKey = normalizedImageFilename.toLowerCase();
         if (!zipImages.has(zipKey)) {
           errors.push({
             row: rowNumber,
@@ -260,12 +268,17 @@ export default factories.createCoreController('api::product.product', ({ strapi 
         continue;
       }
 
-      // Resolve image — zip wins, URL is fallback.
+      // Resolve image — zip wins, URL is fallback, embedded XLSX image is final fallback.
       let imageId: number | null = null;
       try {
         if (zipKey) {
           const entry = zipImages.get(zipKey)!;
-          imageId = await uploadBufferToCloudinary(strapi, entry.buffer, imageFilename, entry.mime);
+          imageId = await uploadBufferToCloudinary(
+            strapi,
+            entry.buffer,
+            normalizedImageFilename,
+            entry.mime,
+          );
           usedZipKeys.add(zipKey);
         } else if (imageUrl) {
           const fetched = await fetchRemoteImageBuffer(imageUrl, maxBytes);
@@ -277,6 +290,13 @@ export default factories.createCoreController('api::product.product', ({ strapi 
               fetched.mime,
             );
           }
+        } else if (embeddedImage) {
+          imageId = await uploadBufferToCloudinary(
+            strapi,
+            embeddedImage.buffer,
+            embeddedImage.filename,
+            embeddedImage.mime,
+          );
         }
       } catch (err: any) {
         errors.push({

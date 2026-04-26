@@ -1121,16 +1121,29 @@ async function backfillImageUrls(
 // path.
 //
 // To run the legacy seed anyway (e.g. for a fresh local dev DB), set
-// SEED_FORCE=true in the env. Without that flag we no-op so a stray
-// `npm run seed` on production can't wipe the catalog.
+// BOTH flags below:
+//   - SEED_FORCE=true
+//   - SEED_ALLOW_CATALOG_MUTATION=true
+// Without both flags we no-op so a stray `npm run seed` can't wipe catalog
+// data that is now sourced from admin bulk import.
 async function seed(strapi: Core.Strapi) {
   if (process.env.SEED_FORCE !== 'true') {
     console.warn(
       '🌱 Legacy seed skipped. Use the admin Bulk Import flow ' +
-        '(xlsx + zip) to onboard products. Set SEED_FORCE=true to run anyway.',
+        '(xlsx + zip) to onboard products/categories. Set SEED_FORCE=true to run anyway.',
     );
     return;
   }
+
+  if (process.env.SEED_ALLOW_CATALOG_MUTATION !== 'true') {
+    console.warn(
+      '🌱 Legacy seed blocked: catalog mutation is disabled. ' +
+        'Products/categories are now admin-managed via bulk import. ' +
+        'Set SEED_ALLOW_CATALOG_MUTATION=true only for explicit local resets.',
+    );
+    return;
+  }
+
   try {
     await seedImpl(strapi);
   } catch (e) {

@@ -4,8 +4,26 @@
  * place avoids drift between content types.
  */
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { Readable } from 'stream';
+
+function shouldRetryUpload(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('etimedout') ||
+    message.includes('econnreset') ||
+    message.includes('eai_again') ||
+    message.includes('socket hang up')
+  );
+}
+
+function maxUploadAttempts(): number {
+  const parsed = parseInt(process.env.BULK_IMPORT_UPLOAD_ATTEMPTS ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 2;
+  return Math.min(parsed, 5);
+}
 
 export async function readFile(file: any): Promise<Buffer> {
   // Strapi v5 multipart files come through as either Buffer-bearing or
@@ -23,19 +41,41 @@ export async function uploadBufferToCloudinary(
   mime: string,
 ): Promise<number | null> {
   const fileService = strapi.plugin('upload').service('upload');
-  const uploaded = await fileService.upload({
-    data: {},
-    files: {
-      path: '',
-      name: filename,
-      type: mime,
-      size: buffer.length,
-      stream: Readable.from(buffer),
-      buffer,
-    },
-  });
-  const created = Array.isArray(uploaded) ? uploaded[0] : uploaded;
-  return created?.id ?? null;
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bulk-import-upload-'));
+  const safeName = path.basename(filename || 'upload.bin');
+  const filePath = path.join(tmpDir, safeName);
+  const attempts = maxUploadAttempts();
+
+  try {
+    await fs.promises.writeFile(filePath, buffer);
+
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const uploaded = await fileService.upload({
+          data: {},
+          files: {
+            filepath: filePath,
+            originalFilename: safeName,
+            mimetype: mime,
+            size: buffer.length,
+          },
+        });
+
+        const created = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+        return created?.id ?? null;
+      } catch (err) {
+        lastError = err;
+        if (attempt >= attempts || !shouldRetryUpload(err)) {
+          throw err;
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('image upload failed');
+  } finally {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true });
+  }
 }
 
 export async function fetchRemoteImageBuffer(

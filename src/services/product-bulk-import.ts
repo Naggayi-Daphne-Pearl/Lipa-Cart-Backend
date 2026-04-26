@@ -32,8 +32,8 @@ const SAMPLE_ROW: TemplateRow = {
   estimated_price: '4500',
   common_units: 'piece',
   category_name: '<pick from dropdown>',
-  image_filename: 'avocado.jpg',
-  image_url: '',
+  image_filename: 'avocado-hass.jpg',
+  image_url: 'https://res.cloudinary.com/<your-cloud-name>/image/upload/v123/example.jpg',
 };
 
 /**
@@ -55,7 +55,7 @@ export async function generateTemplate(
   products.columns = TEMPLATE_HEADERS.map((h) => ({
     header: h,
     key: h,
-    width: h === 'description' || h === 'image_url' ? 36 : 20,
+    width: h === 'description' ? 36 : h === 'image_filename' || h === 'image_url' ? 28 : 20,
   }));
   for (const row of prefilledRows) {
     products.addRow(row);
@@ -98,13 +98,22 @@ export async function generateTemplate(
   return Buffer.from(buffer);
 }
 
+export type EmbeddedImage = { buffer: Buffer; mime: string; filename: string };
+
 /**
  * Parse the first worksheet of an uploaded .xlsx into header-keyed rows.
+ * Also extracts embedded images and indexes them by their row anchor (1-based,
+ * matching ExcelJS row numbers and our `rowNumbers` array), so when an admin
+ * pastes a picture into row 2 we can wire it to that row's product without
+ * forcing a separate filename column.
+ *
  * Throws if required headers are missing.
  */
-export async function parseWorkbook(
-  buffer: Buffer,
-): Promise<{ rows: TemplateRow[]; rowNumbers: number[] }> {
+export async function parseWorkbook(buffer: Buffer): Promise<{
+  rows: TemplateRow[];
+  rowNumbers: number[];
+  embeddedImagesByRow: Map<number, EmbeddedImage>;
+}> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   const sheet = wb.worksheets[0];
@@ -142,7 +151,48 @@ export async function parseWorkbook(
       rowNumbers.push(r);
     }
   }
-  return { rows, rowNumbers };
+
+  const embeddedImagesByRow = extractEmbeddedImages(wb, sheet);
+
+  return { rows, rowNumbers, embeddedImagesByRow };
+}
+
+/** Pull pasted/embedded images from a worksheet, keyed by 1-based anchor row. */
+export function extractEmbeddedImages(
+  wb: ExcelJS.Workbook,
+  sheet: ExcelJS.Worksheet,
+): Map<number, EmbeddedImage> {
+  const out = new Map<number, EmbeddedImage>();
+  try {
+    const images = sheet.getImages() as Array<{
+      imageId: string;
+      range: { tl: { row: number; col: number } };
+    }>;
+    for (const img of images) {
+      const media = wb.getImage(parseInt(img.imageId, 10) as any) as any;
+      if (!media?.buffer) continue;
+      const ext = (media.extension ?? '').toString().toLowerCase();
+      const mime =
+        ext === 'png'
+          ? 'image/png'
+          : ext === 'webp'
+            ? 'image/webp'
+            : ext === 'gif'
+              ? 'image/gif'
+              : 'image/jpeg';
+      const filename = (media.name ? `${media.name}.${ext || 'jpg'}` : 'pasted.jpg').toString();
+      // ExcelJS anchor rows are zero-based; +1 to align with ExcelJS row numbers.
+      const rowNumber = (img.range?.tl?.row ?? 0) + 1;
+      out.set(rowNumber, {
+        buffer: Buffer.isBuffer(media.buffer) ? media.buffer : Buffer.from(media.buffer),
+        mime,
+        filename,
+      });
+    }
+  } catch (_) {
+    // Best-effort — a malformed drawings.xml shouldn't block text rows.
+  }
+  return out;
 }
 
 /**

@@ -1208,6 +1208,133 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
   },
 
   /**
+   * Admin manually assigns a shopper to an unassigned order.
+   * PATCH /api/orders/:id/assign-shopper  body: { shopper_id: <documentId> }
+   * Order must be in payment_confirmed status. Use reassign-shopper to swap
+   * a shopper that's already assigned/shopping.
+   */
+  async adminAssignShopper(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { id } = ctx.params;
+      const shopperId = ctx.request.body?.shopper_id;
+      if (!shopperId) {
+        return ctx.badRequest('shopper_id is required');
+      }
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'payment_confirmed') {
+        return ctx.badRequest(
+          `Order status is "${order.status}". Use reassign-shopper if a shopper is already assigned.`,
+        );
+      }
+
+      const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
+        where: { documentId: shopperId },
+        populate: ['user'],
+      });
+      if (!shopper) return ctx.notFound('Shopper not found');
+      if (shopper.kyc_status !== 'approved' || shopper.is_verified !== true) {
+        return ctx.badRequest('Shopper is not approved for assignment');
+      }
+      if (!shopper.user?.id) {
+        return ctx.badRequest('Shopper is missing linked user profile');
+      }
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          shopper: shopper.user.id,
+          status: 'shopper_assigned',
+          shopper_assigned_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+        },
+      });
+
+      notifyOrderStatusChange(strapi, order.id, 'shopper_assigned', order.order_number).catch(
+        () => {},
+      );
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Admin assign shopper error:', error);
+      ctx.throw(500, 'Failed to assign shopper');
+    }
+  },
+
+  /**
+   * Admin manually assigns a rider to an order ready for pickup.
+   * PATCH /api/orders/:id/assign-rider  body: { rider_id: <documentId> }
+   */
+  async adminAssignRider(ctx: any) {
+    try {
+      const auth = await requireAdmin(ctx, strapi);
+      if (!auth) return;
+
+      const { id } = ctx.params;
+      const riderId = ctx.request.body?.rider_id;
+      if (!riderId) return ctx.badRequest('rider_id is required');
+
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+      });
+      if (!order) return ctx.notFound('Order not found');
+
+      if (order.status !== 'ready_for_pickup') {
+        return ctx.badRequest(
+          `Order status is "${order.status}". Use reassign-rider if a rider is already assigned.`,
+        );
+      }
+
+      const rider: any = await strapi.db.query('api::rider.rider').findOne({
+        where: { documentId: riderId },
+        populate: ['user'],
+      });
+      if (!rider) return ctx.notFound('Rider not found');
+      if (rider.kyc_status !== 'approved' || rider.is_verified !== true) {
+        return ctx.badRequest('Rider is not approved for assignment');
+      }
+      if (!rider.user?.id) {
+        return ctx.badRequest('Rider is missing linked user profile');
+      }
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          rider: rider.user.id,
+          status: 'rider_assigned',
+          rider_assigned_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+          rider: true,
+        },
+      });
+
+      notifyOrderStatusChange(strapi, order.id, 'rider_assigned', order.order_number).catch(
+        () => {},
+      );
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Admin assign rider error:', error);
+      ctx.throw(500, 'Failed to assign rider');
+    }
+  },
+
+  /**
    * Admin reassigns shopper — removes current shopper, resets to payment_confirmed.
    * PATCH /api/orders/:id/reassign-shopper
    */

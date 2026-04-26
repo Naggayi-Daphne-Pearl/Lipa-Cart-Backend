@@ -1111,7 +1111,39 @@ async function backfillImageUrls(
 }
 
 // ── Main seed function ──
+//
+// DEPRECATED: this seed clobbers product images on every run because it
+// reads a stale public/uploads/ map and re-attaches by basename, which
+// invalidates the existing Cloudinary references. Catalogue onboarding now
+// goes through the admin bulk-import flow (xlsx + zip) which uploads each
+// image directly through the Strapi upload plugin and persists correctly.
+// See .claude/playbooks/admin_dashboard_architecture.md for the canonical
+// path.
+//
+// To run the legacy seed anyway (e.g. for a fresh local dev DB), set
+// BOTH flags below:
+//   - SEED_FORCE=true
+//   - SEED_ALLOW_CATALOG_MUTATION=true
+// Without both flags we no-op so a stray `npm run seed` can't wipe catalog
+// data that is now sourced from admin bulk import.
 async function seed(strapi: Core.Strapi) {
+  if (process.env.SEED_FORCE !== 'true') {
+    console.warn(
+      '🌱 Legacy seed skipped. Use the admin Bulk Import flow ' +
+        '(xlsx + zip) to onboard products/categories. Set SEED_FORCE=true to run anyway.',
+    );
+    return;
+  }
+
+  if (process.env.SEED_ALLOW_CATALOG_MUTATION !== 'true') {
+    console.warn(
+      '🌱 Legacy seed blocked: catalog mutation is disabled. ' +
+        'Products/categories are now admin-managed via bulk import. ' +
+        'Set SEED_ALLOW_CATALOG_MUTATION=true only for explicit local resets.',
+    );
+    return;
+  }
+
   try {
     await seedImpl(strapi);
   } catch (e) {

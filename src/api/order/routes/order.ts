@@ -68,6 +68,18 @@ export default {
     },
     {
       method: 'PATCH',
+      path: '/orders/:id/assign-shopper',
+      handler: 'order.adminAssignShopper',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'PATCH',
+      path: '/orders/:id/assign-rider',
+      handler: 'order.adminAssignRider',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'PATCH',
       path: '/orders/:id/reassign-shopper',
       handler: 'order.adminReassignShopper',
       config: { auth: false, policies: [], middlewares: [] },

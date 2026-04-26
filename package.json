@@ -33,8 +33,10 @@
     "@strapi/plugin-users-permissions": "5.33.4",
     "@strapi/provider-upload-cloudinary": "^5.42.0",
     "@strapi/strapi": "5.33.4",
+    "adm-zip": "^0.5.17",
     "africastalking": "^0.7.0",
     "better-sqlite3": "12.8.0",
+    "exceljs": "^4.4.0",
     "firebase-admin": "^13.8.0",
     "fs-extra": "^10.0.0",
     "mime-types": "^2.1.27",
@@ -46,6 +48,7 @@
     "styled-components": "^6.4.0"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^18",

@@ -49,7 +49,7 @@
     },
     "kyc_status": {
       "type": "enumeration",
-      "enum": ["not_submitted", "pending_review", "approved", "rejected"],
+      "enum": ["not_submitted", "pending_review", "more_info_requested", "approved", "rejected"],
       "default": "not_submitted"
     },
     "kyc_submitted_at": {
@@ -60,6 +60,13 @@
     },
     "kyc_rejection_reason": {
       "type": "string"
+    },
+    "kyc_more_info_requested_fields": {
+      "type": "json"
+    },
+    "kyc_admin_notes": {
+      "type": "text",
+      "private": true
     },
     "is_verified": {
       "type": "boolean",

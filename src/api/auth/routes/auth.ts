@@ -19,6 +19,14 @@ export default {
     },
     {
       method: 'POST',
+      path: '/auth/admin/login',
+      handler: 'auth.adminLogin',
+      config: {
+        auth: false,
+      },
+    },
+    {
+      method: 'POST',
       path: '/google-auth/signin',
       handler: 'auth.google',
       config: {

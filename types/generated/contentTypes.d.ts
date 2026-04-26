@@ -934,10 +934,12 @@ export interface ApiRiderRider extends Struct.CollectionTypeSchema {
     id_photo_url: Schema.Attribute.String;
     is_online: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    kyc_admin_notes: Schema.Attribute.Text & Schema.Attribute.Private;
+    kyc_more_info_requested_fields: Schema.Attribute.JSON;
     kyc_rejection_reason: Schema.Attribute.String;
     kyc_reviewed_at: Schema.Attribute.DateTime;
     kyc_status: Schema.Attribute.Enumeration<
-      ['not_submitted', 'pending_review', 'approved', 'rejected']
+      ['not_submitted', 'pending_review', 'more_info_requested', 'approved', 'rejected']
     > &
       Schema.Attribute.DefaultTo<'not_submitted'>;
     kyc_submitted_at: Schema.Attribute.DateTime;
@@ -991,10 +993,12 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     id_photo_url: Schema.Attribute.String;
     is_online: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     is_verified: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    kyc_admin_notes: Schema.Attribute.Text & Schema.Attribute.Private;
+    kyc_more_info_requested_fields: Schema.Attribute.JSON;
     kyc_rejection_reason: Schema.Attribute.String;
     kyc_reviewed_at: Schema.Attribute.DateTime;
     kyc_status: Schema.Attribute.Enumeration<
-      ['not_submitted', 'pending_review', 'approved', 'rejected']
+      ['not_submitted', 'pending_review', 'more_info_requested', 'approved', 'rejected']
     > &
       Schema.Attribute.DefaultTo<'not_submitted'>;
     kyc_submitted_at: Schema.Attribute.DateTime;

@@ -50,7 +50,18 @@ export default ({ env }) => [
   },
   'strapi::poweredBy',
   'strapi::query',
-  'strapi::body',
+  {
+    // Strapi's default formLimit is ~56KB, which truncates real product
+    // images well before plugins.upload.security.sizeLimit ever fires.
+    // Keep these in sync with UPLOAD_MAX_BYTES.
+    name: 'strapi::body',
+    config: {
+      formLimit: '12mb',
+      jsonLimit: '12mb',
+      textLimit: '12mb',
+      formidable: { maxFileSize: 12 * 1024 * 1024 },
+    },
+  },
   'strapi::session',
   'global::normalize-admin-url',
   'strapi::favicon',

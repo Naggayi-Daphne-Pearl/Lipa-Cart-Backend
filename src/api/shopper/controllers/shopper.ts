@@ -1,4 +1,5 @@
 import { factories } from '@strapi/strapi';
+import { firstInvalidUrl } from '../../../services/upload-url-allowlist';
 
 export default factories.createCoreController('api::shopper.shopper', ({ strapi }) => ({
   /**
@@ -42,6 +43,11 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       // Validate required fields
       if (!id_number || !id_photo_url || !face_photo_url) {
         return ctx.badRequest('id_number, id_photo_url, and face_photo_url are required');
+      }
+
+      const badField = firstInvalidUrl({ id_photo_url, face_photo_url });
+      if (badField) {
+        return ctx.badRequest(`${badField} must be a Cloudinary URL uploaded through this app`);
       }
 
       // Find the custom user record for this user
@@ -207,13 +213,21 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       }
 
       const { id } = ctx.params;
-      const { action, rejection_reason } = ctx.request.body;
+      const { action, rejection_reason, admin_notes, fields_to_resubmit } = ctx.request.body ?? {};
 
-      if (!action || !['approve', 'reject'].includes(action)) {
-        return ctx.badRequest('action must be "approve" or "reject"');
+      const ALLOWED_ACTIONS = ['approve', 'reject', 'request_more_info'];
+      if (!action || !ALLOWED_ACTIONS.includes(action)) {
+        return ctx.badRequest('action must be "approve", "reject", or "request_more_info"');
       }
 
-      // Find shopper by documentId or id
+      if (action === 'request_more_info') {
+        if (!Array.isArray(fields_to_resubmit) || fields_to_resubmit.length === 0) {
+          return ctx.badRequest(
+            'fields_to_resubmit (non-empty array) is required for request_more_info',
+          );
+        }
+      }
+
       const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
         where: { documentId: id },
         populate: ['user'],
@@ -223,14 +237,26 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         return ctx.notFound('Shopper not found');
       }
 
-      // Update based on action
       const updateData: any = { kyc_reviewed_at: new Date() };
       if (action === 'approve') {
         updateData.kyc_status = 'approved';
         updateData.is_verified = true;
-      } else {
+        updateData.kyc_rejection_reason = null;
+        updateData.kyc_more_info_requested_fields = null;
+      } else if (action === 'reject') {
         updateData.kyc_status = 'rejected';
+        updateData.is_verified = false;
         updateData.kyc_rejection_reason = rejection_reason || 'No reason provided';
+        updateData.kyc_more_info_requested_fields = null;
+      } else {
+        updateData.kyc_status = 'more_info_requested';
+        updateData.is_verified = false;
+        updateData.kyc_rejection_reason = rejection_reason || null;
+        updateData.kyc_more_info_requested_fields = fields_to_resubmit;
+      }
+
+      if (typeof admin_notes === 'string') {
+        updateData.kyc_admin_notes = admin_notes;
       }
 
       const updated = await strapi.entityService.update('api::shopper.shopper', shopper.id, {
@@ -244,6 +270,8 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
           kyc_status: updated.kyc_status,
           is_verified: updated.is_verified,
           kyc_reviewed_at: updated.kyc_reviewed_at,
+          kyc_rejection_reason: updated.kyc_rejection_reason ?? null,
+          kyc_more_info_requested_fields: updated.kyc_more_info_requested_fields ?? null,
         },
       };
     } catch (error) {

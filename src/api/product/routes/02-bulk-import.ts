@@ -11,6 +11,12 @@ export default {
       config: { auth: false, policies: [] },
     },
     {
+      method: 'GET',
+      path: '/products/category-options',
+      handler: 'product.categoryOptions',
+      config: { policies: [] },
+    },
+    {
       method: 'POST',
       path: '/products/bulk-import',
       handler: 'product.bulkImport',

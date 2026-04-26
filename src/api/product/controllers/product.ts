@@ -127,6 +127,36 @@ async function importImageFromUrl(
 
 export default factories.createCoreController('api::product.product', ({ strapi }) => ({
   /**
+   * GET /products/category-options — admin-only id/name list, used by the
+   * bulk-import dialog to surface valid category_id values without forcing
+   * an extra round-trip to /api/categories with full populate.
+   */
+  async categoryOptions(ctx: any) {
+    const authUser = ctx.state.user;
+    if (!authUser) return ctx.unauthorized('Authentication required');
+    const requester: any = await strapi.db.query('api::user.user').findOne({
+      where: { phone: authUser.username },
+    });
+    if (!requester || requester.user_type !== 'admin') {
+      return ctx.forbidden('Admin only');
+    }
+
+    const categories: any[] = await strapi.db.query('api::category.category').findMany({
+      select: ['id', 'documentId', 'name'],
+      where: { is_active: true },
+      orderBy: { name: 'asc' },
+      limit: 500,
+    });
+
+    ctx.body = {
+      data: categories.map((c) => ({
+        id: c.documentId,
+        name: c.name,
+      })),
+    };
+  },
+
+  /**
    * GET /products/csv-template — returns the canonical CSV template.
    */
   async csvTemplate(ctx: any) {
@@ -168,6 +198,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
     }
 
     const csv = ctx.request.body?.csv;
+    const dryRun = Boolean(ctx.request.body?.dry_run ?? ctx.query?.dry_run);
     if (typeof csv !== 'string' || csv.trim().length === 0) {
       return ctx.badRequest('csv field (raw text) is required');
     }
@@ -226,16 +257,25 @@ export default factories.createCoreController('api::product.product', ({ strapi 
         continue;
       }
 
+      // Validate image URL up front. We only actually fetch the bytes on the
+      // real run — dry runs skip the network round-trip.
+      if (imageUrl && !isAllowedUploadUrl(imageUrl)) {
+        errors.push({
+          row: rowNumber,
+          error: 'image_url must be a Cloudinary URL on our tenant',
+        });
+        continue;
+      }
+
+      if (dryRun) {
+        // All checks above passed; nothing else to validate without writing.
+        created++;
+        continue;
+      }
+
       let imageId: number | null = null;
       if (imageUrl) {
         try {
-          if (!isAllowedUploadUrl(imageUrl)) {
-            errors.push({
-              row: rowNumber,
-              error: 'image_url must be a Cloudinary URL on our tenant',
-            });
-            continue;
-          }
           imageId = await importImageFromUrl(strapi, imageUrl, maxImageBytes);
           if (!imageId) {
             errors.push({ row: rowNumber, error: 'image fetch failed' });
@@ -278,6 +318,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
 
     ctx.body = {
       data: {
+        dry_run: dryRun,
         created,
         skipped: errors.length,
         total: dataRows.length,

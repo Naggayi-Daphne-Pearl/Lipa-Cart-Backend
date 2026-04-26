@@ -1237,15 +1237,19 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       const shopper: any = await strapi.db.query('api::shopper.shopper').findOne({
         where: { documentId: shopperId },
+        populate: ['user'],
       });
       if (!shopper) return ctx.notFound('Shopper not found');
       if (shopper.kyc_status !== 'approved' || shopper.is_verified !== true) {
         return ctx.badRequest('Shopper is not approved for assignment');
       }
+      if (!shopper.user?.id) {
+        return ctx.badRequest('Shopper is missing linked user profile');
+      }
 
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: {
-          shopper: shopper.id,
+          shopper: shopper.user.id,
           status: 'shopper_assigned',
           shopper_assigned_at: new Date(),
         },
@@ -1256,6 +1260,10 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           shopper: true,
         },
       });
+
+      notifyOrderStatusChange(strapi, order.id, 'shopper_assigned', order.order_number).catch(
+        () => {},
+      );
 
       ctx.body = { data: updated };
     } catch (error) {
@@ -1290,15 +1298,19 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       const rider: any = await strapi.db.query('api::rider.rider').findOne({
         where: { documentId: riderId },
+        populate: ['user'],
       });
       if (!rider) return ctx.notFound('Rider not found');
       if (rider.kyc_status !== 'approved' || rider.is_verified !== true) {
         return ctx.badRequest('Rider is not approved for assignment');
       }
+      if (!rider.user?.id) {
+        return ctx.badRequest('Rider is missing linked user profile');
+      }
 
       const updated = await strapi.entityService.update('api::order.order', order.id, {
         data: {
-          rider: rider.id,
+          rider: rider.user.id,
           status: 'rider_assigned',
           rider_assigned_at: new Date(),
         },
@@ -1310,6 +1322,10 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
           rider: true,
         },
       });
+
+      notifyOrderStatusChange(strapi, order.id, 'rider_assigned', order.order_number).catch(
+        () => {},
+      );
 
       ctx.body = { data: updated };
     } catch (error) {

@@ -213,6 +213,8 @@ export default factories.createCoreController('api::product.product', ({ strapi 
     const maxImageBytes = parseInt(process.env.UPLOAD_MAX_BYTES ?? '', 10) || 10 * 1024 * 1024;
 
     let created = 0;
+    let imagesAttached = 0;
+    let rowsRequestingImage = 0;
     const errors: Array<{ row: number; error: string }> = [];
 
     for (let i = 0; i < parsed.rows.length; i++) {
@@ -249,8 +251,18 @@ export default factories.createCoreController('api::product.product', ({ strapi 
       // Validate image references up front (cheap) before doing any uploads.
       const imageFilename = row.image_filename?.trim() ?? '';
       const imageUrl = row.image_url?.trim() ?? '';
+      const requestsImage = imageFilename.length > 0 || imageUrl.length > 0;
+      if (requestsImage) rowsRequestingImage++;
+
       let zipKey: string | null = null;
       if (imageFilename) {
+        if (zipImages.size === 0) {
+          errors.push({
+            row: rowNumber,
+            error: `image "${imageFilename}" referenced but no .zip was uploaded`,
+          });
+          continue;
+        }
         zipKey = imageFilename.toLowerCase();
         if (!zipImages.has(zipKey)) {
           errors.push({
@@ -317,6 +329,7 @@ export default factories.createCoreController('api::product.product', ({ strapi 
           },
         });
         created++;
+        if (imageId) imagesAttached++;
       } catch (err: any) {
         errors.push({
           row: rowNumber,
@@ -334,6 +347,9 @@ export default factories.createCoreController('api::product.product', ({ strapi 
         skipped: errors.length,
         total: parsed.rows.length,
         errors,
+        rows_requesting_image: rowsRequestingImage,
+        images_attached: imagesAttached,
+        zip_provided: zipFile != null,
         unused_zip_files: unusedZipFiles,
       },
     };

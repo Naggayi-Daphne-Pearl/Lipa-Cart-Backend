@@ -38,6 +38,9 @@
     "id_photo_url": {
       "type": "string"
     },
+    "id_back_url": {
+      "type": "string"
+    },
     "face_photo_url": {
       "type": "string"
     },

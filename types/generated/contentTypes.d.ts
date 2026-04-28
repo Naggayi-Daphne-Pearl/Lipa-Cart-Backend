@@ -988,6 +988,7 @@ export interface ApiShopperShopper extends Struct.CollectionTypeSchema {
     emergency_contact_phone: Schema.Attribute.String;
     face_photo: Schema.Attribute.Media<'images'>;
     face_photo_url: Schema.Attribute.String;
+    id_back_url: Schema.Attribute.String;
     id_number: Schema.Attribute.String;
     id_photo: Schema.Attribute.Media<'images'>;
     id_photo_url: Schema.Attribute.String;

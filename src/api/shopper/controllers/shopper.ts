@@ -1,7 +1,37 @@
 import { factories } from '@strapi/strapi';
 import { firstInvalidUrl } from '../../../services/upload-url-allowlist';
 
+const shapeDocumentFields = (payload: any) => {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+
+  const value = payload as Record<string, any>;
+  const idFrontUrl = value.idFrontUrl ?? value.id_front_url ?? value.id_photo_url ?? null;
+  const idBackUrl = value.idBackUrl ?? value.id_back_url ?? null;
+  const selfieUrl = value.selfieUrl ?? value.selfie_url ?? value.face_photo_url ?? null;
+
+  delete value.proof_of_address_url;
+  delete value.proofOfAddressUrl;
+
+  value.idFrontUrl = idFrontUrl;
+  value.idBackUrl = idBackUrl;
+  value.selfieUrl = selfieUrl;
+  return value;
+};
+
 export default factories.createCoreController('api::shopper.shopper', ({ strapi }) => ({
+  async findOne(ctx: any) {
+    await super.findOne(ctx);
+    if (ctx.body?.data && typeof ctx.body.data === 'object') {
+      ctx.body.data = shapeDocumentFields(ctx.body.data);
+      if (ctx.body.data.attributes && typeof ctx.body.data.attributes === 'object') {
+        ctx.body.data.attributes = shapeDocumentFields(ctx.body.data.attributes);
+      }
+    }
+    return ctx.body;
+  },
+
   /**
    * Shopper submits their KYC documents
    * POST /api/shoppers/kyc/submit
@@ -30,7 +60,11 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       const {
         id_number,
         id_photo_url,
+        id_back_url,
+        idBackUrl,
         face_photo_url,
+        selfie_url,
+        selfieUrl,
         mobile_money_provider,
         mobile_money_number,
         bank_name,
@@ -40,12 +74,19 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
         emergency_contact_phone,
       } = ctx.request.body;
 
+      const resolvedIdBackUrl = id_back_url || idBackUrl || null;
+      const resolvedSelfieUrl = face_photo_url || selfie_url || selfieUrl || null;
+
       // Validate required fields
-      if (!id_number || !id_photo_url || !face_photo_url) {
+      if (!id_number || !id_photo_url || !resolvedSelfieUrl) {
         return ctx.badRequest('id_number, id_photo_url, and face_photo_url are required');
       }
 
-      const badField = firstInvalidUrl({ id_photo_url, face_photo_url });
+      const badField = firstInvalidUrl({
+        id_photo_url,
+        id_back_url: resolvedIdBackUrl,
+        face_photo_url: resolvedSelfieUrl,
+      });
       if (badField) {
         return ctx.badRequest(`${badField} must be a Cloudinary URL uploaded through this app`);
       }
@@ -122,7 +163,8 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
       const kycUpdateData: any = {
         id_number,
         id_photo_url,
-        face_photo_url,
+        id_back_url: resolvedIdBackUrl,
+        face_photo_url: resolvedSelfieUrl,
         kyc_status: 'pending_review',
         kyc_submitted_at: new Date(),
       };
@@ -146,6 +188,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
             documentId: updated.documentId,
             kyc_status: updated.kyc_status,
             kyc_submitted_at: updated.kyc_submitted_at,
+            idFrontUrl: updated.id_photo_url ?? null,
+            idBackUrl: updated.id_back_url ?? null,
+            selfieUrl: updated.face_photo_url ?? null,
           },
         };
       } catch (updateErr: any) {
@@ -162,6 +207,9 @@ export default factories.createCoreController('api::shopper.shopper', ({ strapi 
               documentId: updated.documentId,
               kyc_status: updated.kyc_status,
               kyc_submitted_at: updated.kyc_submitted_at,
+              idFrontUrl: updated.id_photo_url ?? null,
+              idBackUrl: updated.id_back_url ?? null,
+              selfieUrl: updated.face_photo_url ?? null,
             },
           };
         } catch (fallbackErr: any) {

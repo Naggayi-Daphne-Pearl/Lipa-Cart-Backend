@@ -1,6 +1,7 @@
 import * as nodemailer from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import sgMail from '@sendgrid/mail';
+import PDFDocument from 'pdfkit';
 
 type EmailTransportKind = 'sendgrid-api' | 'smtp' | null;
 
@@ -457,10 +458,10 @@ function buildSimpleReceiptPdf(orderNumber: string, total: number): Buffer {
     'Thank you for shopping with LipaCart.',
   ];
 
-  let y = 780;
   const commands = ['BT', '/F1 12 Tf'];
+  let y = 780;
   for (const line of lines) {
-    commands.push(`50 ${y} Td (${escapePdfText(line)}) Tj`);
+    commands.push(`1 0 0 1 50 ${y} Tm (${escapePdfText(line)}) Tj`);
     y -= 24;
   }
   commands.push('ET');
@@ -490,6 +491,322 @@ function buildSimpleReceiptPdf(orderNumber: string, total: number): Buffer {
   pdf += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
 
   return Buffer.from(pdf, 'utf8');
+}
+
+function buildPlainTextReceiptPdf(title: string, lines: string[]): Buffer {
+  const commands = ['BT', '/F1 12 Tf'];
+  const allLines = [title, '', ...lines];
+  let y = 780;
+  for (const line of allLines) {
+    commands.push(`1 0 0 1 50 ${y} Tm (${escapePdfText(line)}) Tj`);
+    y -= line ? 18 : 10;
+  }
+  commands.push('ET');
+
+  const stream = commands.join('\n');
+  const objects: string[] = [];
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+  objects[3] =
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>';
+  objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  objects[5] = `<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}\nendstream`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+
+  for (let i = 1; i <= 5; i++) {
+    offsets[i] = Buffer.byteLength(pdf, 'utf8');
+    pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefStart = Buffer.byteLength(pdf, 'utf8');
+  pdf += `xref\n0 6\n0000000000 65535 f \n`;
+  for (let i = 1; i <= 5; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  return Buffer.from(pdf, 'utf8');
+}
+
+function formatCurrency(amount: unknown, currency = 'UGX'): string {
+  return `${currency} ${Number(amount || 0).toLocaleString()}`;
+}
+
+function formatDateTime(value: unknown): string {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+}
+
+function formatHumanDateTime(value: unknown): string {
+  const date = new Date(String(value || ''));
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+
+  return new Intl.DateTimeFormat('en-UG', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function truncateMiddle(value: string, head = 8, tail = 5): string {
+  if (value.length <= head + tail + 1) return value;
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
+}
+
+function toPdfSafeText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/[–—]/g, '-')
+    .replace(/[•·]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\t\n\r\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+interface PaymentReceiptPdfItem {
+  name: string;
+  quantity: string;
+  unitPrice: string;
+  subtotal: string;
+}
+
+interface PaymentReceiptPdfData {
+  orderNumber: string;
+  transactionId: string;
+  paidAtHuman: string;
+  amountPaid: string;
+  customerName: string;
+  customerEmail: string;
+  deliveryAddress: string;
+  deliveryWindow: string;
+  itemRows: PaymentReceiptPdfItem[];
+  summaryRows: Array<{ label: string; value: string; strong?: boolean }>;
+}
+
+async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promise<Buffer> {
+  const doc = new PDFDocument({ size: 'A4', margin: 44, bufferPages: true });
+  const chunks: Buffer[] = [];
+
+  const bufferPromise = new Promise<Buffer>((resolve, reject) => {
+    doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+  });
+
+  const colors = {
+    green: '#0F766E',
+    greenSoft: '#E7F6EE',
+    ink: '#24312E',
+    muted: '#6B7280',
+    line: '#D8E2DD',
+    soft: '#F6F8F7',
+    zebra: '#FBFCFB',
+  };
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const left = doc.page.margins.left;
+  const right = pageWidth - doc.page.margins.right;
+  const contentWidth = right - left;
+  const cardPad = 16;
+  let y = doc.page.margins.top;
+
+  const drawPageChrome = () => {
+    doc.save();
+    doc.rect(0, 0, pageWidth, 18).fill(colors.green);
+    doc.restore();
+  };
+
+  const ensureSpace = (height: number) => {
+    if (y + height <= pageHeight - 72) return;
+    doc.addPage();
+    drawPageChrome();
+    y = doc.page.margins.top;
+  };
+
+  const sectionCard = (title: string, height: number, render: () => void) => {
+    ensureSpace(height);
+    doc.save();
+    doc.roundedRect(left, y, contentWidth, height, 12).fillAndStroke('#FFFFFF', colors.line);
+    doc.restore();
+    doc.font('Helvetica-Bold').fontSize(14).fillColor(colors.green).text(toPdfSafeText(title), left + cardPad, y + 14, {
+      width: contentWidth - cardPad * 2,
+    });
+    const previousY = y;
+    y += 40;
+    render();
+    y = previousY + height + 14;
+  };
+
+  const labelValue = (label: string, value: string, top: number, emphasize = false) => {
+    doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(toPdfSafeText(label), left + cardPad, top, {
+      width: 150,
+    });
+    doc
+      .font(emphasize ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(emphasize ? 11 : 10.5)
+      .fillColor(emphasize ? colors.green : colors.ink)
+      .text(toPdfSafeText(value), left + 190, top, {
+        width: contentWidth - 190 - cardPad,
+        align: 'right',
+      });
+  };
+
+  drawPageChrome();
+
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(colors.green).text('LipaCart', left, y, { width: contentWidth / 2 });
+  doc.font('Helvetica').fontSize(9).fillColor(colors.muted).text('Reliable grocery delivery', left, y + 22, {
+    width: contentWidth / 2,
+  });
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(colors.ink).text('PAYMENT RECEIPT', left, y + 4, {
+    width: contentWidth,
+    align: 'right',
+  });
+  y += 52;
+
+  ensureSpace(118);
+  doc.save();
+  doc.roundedRect(left, y, contentWidth, 118, 16).fillAndStroke(colors.greenSoft, colors.line);
+  doc.restore();
+  doc.circle(left + 34, y + 32, 18).fill(colors.green);
+  doc.font('Helvetica-Bold').fontSize(16).fillColor('#FFFFFF').text('PAID', left + 19, y + 26, { width: 30, align: 'center' });
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(colors.green).text('Payment Successful', left + 68, y + 18);
+  doc.font('Helvetica-Bold').fontSize(26).fillColor(colors.green).text(toPdfSafeText(data.amountPaid), left + 68, y + 42);
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(colors.ink).text(`#${toPdfSafeText(data.orderNumber)}`, left + 68, y + 78);
+  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(toPdfSafeText(data.paidAtHuman), left + 68, y + 94);
+  y += 132;
+
+  sectionCard('Payment Information', 122, () => {
+    labelValue('Transaction ID', data.transactionId, y);
+    labelValue('Date', data.paidAtHuman, y + 22);
+    labelValue('Method', 'PawaPay', y + 44);
+    labelValue('Status', 'Payment Successful', y + 66, true);
+    labelValue('Amount Paid', data.amountPaid, y + 88, true);
+  });
+
+  sectionCard('Customer Information', 84, () => {
+    labelValue('Name', data.customerName, y);
+    labelValue('Email', data.customerEmail, y + 24);
+    labelValue('Delivery Window', data.deliveryWindow, y + 48);
+  });
+
+  const addressHeight = Math.max(84, 60 + Math.ceil(data.deliveryAddress.length / 44) * 14);
+  sectionCard('Delivery Details', addressHeight, () => {
+    doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text('Address', left + cardPad, y, { width: 120 });
+    doc.font('Helvetica').fontSize(10.5).fillColor(colors.ink).text(toPdfSafeText(data.deliveryAddress), left + 190, y, {
+      width: contentWidth - 190 - cardPad,
+      align: 'right',
+    });
+    labelValue('Website', FRONTEND_URL, y + 28);
+  });
+
+  const tableHeight = 58 + Math.max(1, data.itemRows.length) * 24 + 16;
+  sectionCard('Order Items', tableHeight, () => {
+    const cols = {
+      item: left + cardPad,
+      qty: left + contentWidth - 210,
+      unit: left + contentWidth - 140,
+      subtotal: left + contentWidth - 68,
+    };
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(colors.muted);
+    doc.text('ITEM', cols.item, y, { width: cols.qty - cols.item - 8 });
+    doc.text('QTY', cols.qty, y, { width: 34, align: 'center' });
+    doc.text('UNIT', cols.unit, y, { width: 62, align: 'right' });
+    doc.text('SUBTOTAL', cols.subtotal, y, { width: 58, align: 'right' });
+    let rowY = y + 18;
+    const rows = data.itemRows.length
+      ? data.itemRows
+      : [{ name: 'Order items unavailable', quantity: '-', unitPrice: '-', subtotal: '-' }];
+    rows.forEach((row, index) => {
+      if (index % 2 == 0) {
+        doc.save();
+        doc.rect(left + 8, rowY - 3, contentWidth - 16, 22).fill(colors.zebra);
+        doc.restore();
+      }
+      doc.font('Helvetica').fontSize(10).fillColor(colors.ink).text(toPdfSafeText(row.name), cols.item, rowY, {
+        width: cols.qty - cols.item - 8,
+      });
+      doc.text(toPdfSafeText(row.quantity), cols.qty, rowY, { width: 34, align: 'center' });
+      doc.text(toPdfSafeText(row.unitPrice), cols.unit, rowY, { width: 62, align: 'right' });
+      doc.text(toPdfSafeText(row.subtotal), cols.subtotal, rowY, { width: 58, align: 'right' });
+      rowY += 24;
+    });
+  });
+
+  const totalsHeight = 44 + data.summaryRows.length * 22;
+  sectionCard('Order Summary', totalsHeight, () => {
+    let rowY = y;
+    data.summaryRows.forEach((row, index) => {
+      if (row.strong && index > 0) {
+        doc.save();
+        doc.moveTo(left + cardPad, rowY - 6).lineTo(right - cardPad, rowY - 6).strokeColor(colors.line).stroke();
+        doc.restore();
+      }
+      labelValue(row.label, row.value, rowY, row.strong);
+      rowY += 22;
+    });
+  });
+
+  ensureSpace(86);
+  doc.save();
+  doc.roundedRect(left, y, contentWidth, 86, 12).fillAndStroke(colors.soft, colors.line);
+  doc.restore();
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(colors.ink).text('Thank you for shopping with LipaCart!', left + cardPad, y + 16);
+  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(
+    'This is an official receipt. Please retain it for your records.',
+    left + cardPad,
+    y + 36,
+    { width: contentWidth - cardPad * 2 },
+  );
+  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(`Support: ${toPdfSafeText(SUPPORT_EMAIL)} | ${toPdfSafeText(FRONTEND_URL)}`, left + cardPad, y + 56, {
+    width: contentWidth - cardPad * 2,
+  });
+
+  const pageRange = doc.bufferedPageRange();
+  for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex++) {
+    doc.switchToPage(pageIndex);
+    doc.font('Helvetica').fontSize(9).fillColor(colors.muted).text(
+      `Page ${pageIndex - pageRange.start + 1} of ${pageRange.count}`,
+      left,
+      pageHeight - 36,
+      { width: contentWidth, align: 'right' },
+    );
+  }
+
+  doc.end();
+  return bufferPromise;
+}
+
+async function _getCustomerContact(
+  strapi: any,
+  orderId: number,
+): Promise<{ email: string; name: string | null } | null> {
+  try {
+    const customerLink: any = await strapi.db.connection.raw(
+      `SELECT user_id FROM orders_customer_lnk WHERE order_id = ?`,
+      [orderId],
+    );
+    const rows = customerLink?.rows || customerLink;
+    if (!rows || rows.length === 0) return null;
+
+    const user: any = await strapi.db.query('api::user.user').findOne({
+      where: { id: rows[0].user_id },
+    });
+
+    if (!user?.email) return null;
+
+    return {
+      email: String(user.email),
+      name: user.name ? String(user.name) : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
@@ -764,23 +1081,380 @@ export async function sendDeliveryReceiptEmail(
 }
 
 /**
+ * Send a payment receipt email after a successful PawaPay payment.
+ */
+export async function sendPawaPayPaymentReceiptEmail(
+  strapi: any,
+  paymentId: string | number,
+): Promise<void> {
+  if (!isEmailReady()) return;
+
+  try {
+    const payment: any = await strapi.db.query('api::payment.payment').findOne({
+      where: { id: paymentId },
+      populate: {
+        order: {
+          populate: {
+            order_items: { populate: ['product'] },
+            delivery_address: true,
+          },
+        },
+      },
+    });
+
+    const order = payment?.order;
+    if (!payment || !order) return;
+
+    const customer = await _getCustomerContact(strapi, order.id);
+    if (!customer?.email) return;
+
+    const orderNumber = String(order.order_number || order.documentId || order.id);
+    const customerName = customer.name || 'Customer';
+    const paymentCurrency = String(payment.currency || 'UGX');
+    const subtotal = Number(order.subtotal || 0);
+    const serviceFee = Number(order.service_fee || 0);
+    const deliveryFee = Number(order.delivery_fee || 0);
+    const total = Number(payment.amount || order.total || 0);
+    const pawaPayCharge = Math.max(0, total - subtotal - serviceFee - deliveryFee);
+    const paidAt = formatDateTime(payment.completed_at || new Date());
+    const paidAtHuman = formatHumanDateTime(payment.completed_at || new Date());
+    const orderUrl = `${FRONTEND_URL}/customer/orders`;
+    const transactionId = String(payment.transaction_id || payment.documentId || payment.id);
+    const shortTransactionId = truncateMiddle(transactionId);
+    const deliveryAddress = [
+      order.delivery_address?.address_line,
+      order.delivery_address?.city,
+      order.delivery_address?.landmark,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const deliverySlot = String(order.delivery_slot || 'We will share your delivery window soon.');
+
+    const itemRows = Array.isArray(order.order_items)
+      ? order.order_items
+          .map((item: any) => {
+            const quantity = Number(item.quantity || 0);
+            const unitPrice = Number(item.actual_price || item.estimated_price || 0);
+            const lineTotal = quantity > 0 && unitPrice > 0 ? quantity * unitPrice : 0;
+            return {
+              label: `${item.product_name || item.product?.name || 'Item'} x ${quantity || 1}`,
+              name: String(item.product_name || item.product?.name || 'Item'),
+              quantity: String(quantity || 1),
+              unitPrice: unitPrice > 0 ? formatCurrency(unitPrice, paymentCurrency) : '-',
+              subtotal: lineTotal > 0 ? formatCurrency(lineTotal, paymentCurrency) : 'Included',
+              value: lineTotal > 0 ? formatCurrency(lineTotal, paymentCurrency) : 'Included',
+            };
+          })
+          .filter((row: any) => row.label)
+      : [];
+
+    const sections: EmailSection[] = [
+      { kind: 'greeting', text: `Hi ${escapeHtml(customerName)},` },
+      {
+        kind: 'paragraph',
+        text: `Your payment for order <strong>#${escapeHtml(orderNumber)}</strong> has been received and finalized.`,
+      },
+      { kind: 'cta', label: 'View Order', url: orderUrl },
+      {
+        kind: 'summary',
+        rows: [
+          { label: 'Transaction ID', value: transactionId },
+          { label: 'Paid On', value: paidAtHuman },
+          { label: 'Amount Paid', value: formatCurrency(total, paymentCurrency), accent: 'primary' },
+          { label: 'Payment Method', value: 'PawaPay' },
+          { label: 'Merchant', value: 'LipaCart' },
+          { label: 'Customer', value: customerName },
+          { label: 'Email', value: customer.email },
+        ],
+      },
+    ];
+
+    if (itemRows.length > 0) {
+      sections.push({
+        kind: 'summary',
+        rows: itemRows,
+      });
+    }
+
+    sections.push({
+      kind: 'summary',
+      rows: [
+        { label: 'Subtotal', value: formatCurrency(subtotal, paymentCurrency) },
+        { label: 'Service Fee', value: formatCurrency(serviceFee, paymentCurrency) },
+        { label: 'Delivery Fee', value: formatCurrency(deliveryFee, paymentCurrency) },
+        ...(pawaPayCharge > 0
+          ? [{ label: 'PawaPay Charge', value: formatCurrency(pawaPayCharge, paymentCurrency) }]
+          : []),
+        { label: 'Total Paid', value: formatCurrency(total, paymentCurrency), accent: 'primary' },
+      ],
+    });
+
+    sections.push({
+      kind: 'notice',
+      title: 'Receipt attached',
+      body: 'A payment receipt PDF is attached to this email for your records.',
+      tone: 'success',
+    });
+
+    const receiptLines = [
+      `Order Number: #${orderNumber}`,
+      `Transaction ID: ${String(payment.transaction_id || payment.documentId || payment.id)}`,
+      `Paid On: ${paidAt}`,
+      `Amount Paid: ${formatCurrency(total, paymentCurrency)}`,
+      'Payment Method: PawaPay',
+      'Merchant: LipaCart',
+      `Customer: ${customerName}`,
+      `Email: ${customer.email}`,
+      '',
+      'Breakdown:',
+      `Subtotal: ${formatCurrency(subtotal, paymentCurrency)}`,
+      `Service Fee: ${formatCurrency(serviceFee, paymentCurrency)}`,
+      `Delivery Fee: ${formatCurrency(deliveryFee, paymentCurrency)}`,
+      ...(pawaPayCharge > 0
+        ? [`PawaPay Charge: ${formatCurrency(pawaPayCharge, paymentCurrency)}`]
+        : []),
+      `Total Paid: ${formatCurrency(total, paymentCurrency)}`,
+      ...(itemRows.length > 0 ? ['', 'Items:', ...itemRows.map((row) => `${row.label} - ${row.value}`)] : []),
+    ];
+    const summaryRows = [
+      { label: 'Subtotal', value: formatCurrency(subtotal, paymentCurrency) },
+      { label: 'Service Fee', value: formatCurrency(serviceFee, paymentCurrency) },
+      { label: 'Delivery Fee', value: formatCurrency(deliveryFee, paymentCurrency) },
+      ...(pawaPayCharge > 0
+        ? [{ label: 'PawaPay Charge', value: formatCurrency(pawaPayCharge, paymentCurrency) }]
+        : []),
+      { label: 'Total Paid', value: formatCurrency(total, paymentCurrency), strong: true },
+    ];
+    const receiptPdf = await buildStyledPaymentReceiptPdf({
+      orderNumber,
+      transactionId,
+      paidAtHuman,
+      amountPaid: formatCurrency(total, paymentCurrency),
+      customerName,
+      customerEmail: customer.email,
+      deliveryAddress: deliveryAddress || 'Saved in your LipaCart account',
+      deliveryWindow: deliverySlot,
+      itemRows: itemRows.map((row: any) => ({
+        name: row.name,
+        quantity: row.quantity,
+        unitPrice: row.unitPrice,
+        subtotal: row.subtotal,
+      })),
+      summaryRows,
+    });
+
+    const receiptPayload = {
+      paymentId: payment.id,
+      orderId: order.id,
+      orderNumber,
+      transactionId,
+      customerName,
+      customerEmail: customer.email,
+      currency: paymentCurrency,
+      subtotal,
+      serviceFee,
+      deliveryFee,
+      pawaPayCharge,
+      total,
+      paidAt,
+      items: itemRows,
+    };
+    console.info('[email] PawaPay receipt payload:', JSON.stringify(receiptPayload));
+    console.info('[email] PawaPay receipt PDF bytes:', receiptPdf.length);
+
+    const itemTableRows = itemRows
+      .map(
+        (row: any) => `
+          <tr>
+            <td style="padding:12px 0;border-top:1px solid ${BRAND.border};font-size:14px;color:${BRAND.ink};">
+              <div style="font-weight:600;">${escapeHtml(row.name)}</div>
+            </td>
+            <td style="padding:12px 0;border-top:1px solid ${BRAND.border};font-size:14px;color:${BRAND.muted};text-align:center;white-space:nowrap;">${escapeHtml(row.quantity)}</td>
+            <td style="padding:12px 0;border-top:1px solid ${BRAND.border};font-size:14px;color:${BRAND.ink};font-weight:600;text-align:right;white-space:nowrap;">${escapeHtml(row.value)}</td>
+          </tr>`,
+      )
+      .join('');
+
+    const summaryTableRows = summaryRows
+      .map(
+        (row) => `
+          <tr>
+            <td style="padding:10px 0;color:${row.strong ? BRAND.ink : BRAND.muted};font-size:${row.strong ? '15px' : '14px'};font-weight:${row.strong ? '700' : '500'};">${escapeHtml(row.label)}</td>
+            <td style="padding:10px 0;color:${row.strong ? BRAND.primary : BRAND.ink};font-size:${row.strong ? '15px' : '14px'};font-weight:${row.strong ? '700' : '600'};text-align:right;">${escapeHtml(row.value)}</td>
+          </tr>`,
+      )
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Payment Receipt</title>
+  </head>
+  <body style="margin:0;padding:0;background:#F8F9F8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:${BRAND.ink};">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Payment successful for order #${escapeHtml(orderNumber)}.</div>
+    <div style="padding:24px 12px;">
+      <div style="max-width:640px;margin:0 auto;background:#FFFFFF;border:1px solid ${BRAND.border};border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(15,118,110,0.08);">
+        <div style="height:8px;background:${BRAND.primary};"></div>
+        <div style="padding:28px 28px 22px;text-align:center;border-bottom:1px solid ${BRAND.border};">
+          <div role="img" aria-label="Payment successful" style="width:64px;height:64px;line-height:64px;margin:0 auto 16px;border-radius:50%;background:#E7F6EE;color:${BRAND.primary};font-size:34px;font-weight:700;">✓</div>
+          <p style="margin:0 0 8px;font-size:13px;letter-spacing:1.2px;text-transform:uppercase;color:${BRAND.primary};font-weight:700;">Payment Successful</p>
+          <h1 style="margin:0 0 10px;font-size:34px;line-height:1.1;color:${BRAND.primary};">${escapeHtml(formatCurrency(total, paymentCurrency))}</h1>
+          <p style="margin:0;color:${BRAND.muted};font-size:15px;">Order <strong style="color:${BRAND.ink};">#${escapeHtml(orderNumber)}</strong></p>
+        </div>
+        <div style="padding:24px 28px 28px;">
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:${BRAND.ink};">Thanks for shopping with LipaCart, ${escapeHtml(customerName)}. We have confirmed your payment and your order is moving to the next stage.</p>
+
+          <div style="text-align:center;margin:0 0 24px;">
+            <a href="${orderUrl}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 22px;background:${BRAND.primary};color:#FFFFFF;text-decoration:none;border-radius:10px;font-size:14px;font-weight:700;">View Order</a>
+          </div>
+
+          <div style="background:#FCFDFC;border:1px solid ${BRAND.border};border-radius:16px;padding:18px 18px 8px;margin:0 0 18px;">
+            <h2 style="margin:0 0 14px;font-size:16px;color:${BRAND.ink};">Payment Details</h2>
+            <table role="presentation" style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;">Amount Paid</td>
+                <td style="padding:8px 0;color:${BRAND.primary};font-size:14px;font-weight:700;text-align:right;">${escapeHtml(formatCurrency(total, paymentCurrency))}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Paid On</td>
+                <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};">${escapeHtml(paidAtHuman)}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Payment Method</td>
+                <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};">PawaPay</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Transaction ID</td>
+                <td style="padding:8px 0;color:${BRAND.subtle};font-size:12px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};font-family:'SFMono-Regular',Consolas,Menlo,monospace;">${escapeHtml(shortTransactionId)}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Merchant</td>
+                <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};">LipaCart</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="background:#FFFFFF;border:1px solid ${BRAND.border};border-radius:16px;padding:18px 18px 8px;margin:0 0 18px;">
+            <h2 style="margin:0 0 14px;font-size:16px;color:${BRAND.ink};">Order Details</h2>
+            <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 12px;">
+              <thead>
+                <tr>
+                  <th scope="col" style="padding:0 0 8px;text-align:left;color:${BRAND.subtle};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Item</th>
+                  <th scope="col" style="padding:0 0 8px;text-align:center;color:${BRAND.subtle};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Qty</th>
+                  <th scope="col" style="padding:0 0 8px;text-align:right;color:${BRAND.subtle};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemTableRows || `<tr><td colspan="3" style="padding:12px 0;color:${BRAND.muted};font-size:14px;">Order items will appear in your order timeline shortly.</td></tr>`}
+              </tbody>
+            </table>
+            <table role="presentation" style="width:100%;border-collapse:collapse;border-top:1px solid ${BRAND.border};padding-top:8px;">
+              ${summaryTableRows}
+            </table>
+          </div>
+
+          <div style="display:block;margin:0 0 18px;">
+            <div style="background:#FCFDFC;border:1px solid ${BRAND.border};border-radius:16px;padding:18px 18px 8px;margin:0 0 18px;">
+              <h2 style="margin:0 0 14px;font-size:16px;color:${BRAND.ink};">Delivery Details</h2>
+              <table role="presentation" style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;">Address</td>
+                  <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;">${escapeHtml(deliveryAddress || 'Saved in your LipaCart account')}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Delivery Window</td>
+                  <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};">${escapeHtml(deliverySlot)}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background:#FFFFFF;border:1px solid ${BRAND.border};border-radius:16px;padding:18px 18px 8px;">
+              <h2 style="margin:0 0 14px;font-size:16px;color:${BRAND.ink};">Customer Info</h2>
+              <table role="presentation" style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;">Name</td>
+                  <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;">${escapeHtml(customerName)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0;color:${BRAND.muted};font-size:14px;border-top:1px solid ${BRAND.border};">Email</td>
+                  <td style="padding:8px 0;color:${BRAND.ink};font-size:14px;font-weight:600;text-align:right;border-top:1px solid ${BRAND.border};">${escapeHtml(customer.email)}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+
+          <div style="background:#F6FBF8;border:1px solid #D6EDE2;border-radius:16px;padding:16px 18px;margin:0 0 18px;">
+            <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:${BRAND.ink};">Receipt attached</p>
+            <p style="margin:0;font-size:14px;line-height:1.7;color:${BRAND.muted};">Your printable PDF receipt is attached to this email. Need help with this payment? Contact support below and include order <strong>#${escapeHtml(orderNumber)}</strong>.</p>
+          </div>
+
+          <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:${BRAND.muted};">Thanks for shopping with LipaCart, ${escapeHtml(customerName)}. We'll notify you once your order is on the way.</p>
+
+          <div style="text-align:center;margin:0 0 8px;">
+            <a href="mailto:${SUPPORT_EMAIL}" style="color:${BRAND.primary};text-decoration:none;font-size:14px;font-weight:700;">Need help? Contact support</a>
+            <span style="display:inline-block;width:18px;"></span>
+            <a href="${orderUrl}" style="color:${BRAND.primary};text-decoration:none;font-size:14px;font-weight:700;">Track delivery</a>
+          </div>
+        </div>
+        <div style="padding:18px 28px 24px;border-top:1px solid ${BRAND.border};background:#FBFCFB;text-align:center;">
+          <div style="color:${BRAND.primary};font-size:18px;font-weight:800;letter-spacing:-0.2px;margin-bottom:6px;">LipaCart</div>
+          <p style="margin:0 0 6px;color:${BRAND.muted};font-size:12px;">Support: <a href="mailto:${SUPPORT_EMAIL}" style="color:${BRAND.primary};text-decoration:none;font-weight:700;">${SUPPORT_EMAIL}</a></p>
+          <p style="margin:0;color:${BRAND.subtle};font-size:11px;">You are receiving this transactional email because a payment was completed on your LipaCart account.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+    const text = [
+      `Payment Successful — ${formatCurrency(total, paymentCurrency)}`,
+      `Order: #${orderNumber}`,
+      `Paid on: ${paidAtHuman}`,
+      `Transaction ID: ${transactionId}`,
+      'Payment Method: PawaPay',
+      'Merchant: LipaCart',
+      '',
+      'Order Details',
+      ...itemRows.map((row: any) => `${row.name} | Qty ${row.quantity} | ${row.value}`),
+      '',
+      ...summaryRows.map((row) => `${row.label}: ${row.value}`),
+      '',
+      'Delivery Details',
+      `Address: ${deliveryAddress || 'Saved in your LipaCart account'}`,
+      `Delivery Window: ${deliverySlot}`,
+      '',
+      'Customer Info',
+      `Name: ${customerName}`,
+      `Email: ${customer.email}`,
+      '',
+      `View Order: ${orderUrl}`,
+      `Support: ${SUPPORT_EMAIL}`,
+    ].join('\n');
+
+    await sendEmail({
+      to: customer.email,
+      subject: `Payment Receipt — #${orderNumber}`,
+      text,
+      html,
+      attachments: [
+        {
+          filename: `payment-receipt-${orderNumber}.pdf`,
+          content: receiptPdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  } catch (err: any) {
+    console.error('[email] sendPawaPayPaymentReceiptEmail error:', err?.message);
+  }
+}
+
+/**
  * Look up the customer's email address from an order ID.
  */
 async function _getCustomerEmail(strapi: any, orderId: number): Promise<string | null> {
-  try {
-    const customerLink: any = await strapi.db.connection.raw(
-      `SELECT user_id FROM orders_customer_lnk WHERE order_id = ?`,
-      [orderId],
-    );
-    const rows = customerLink?.rows || customerLink;
-    if (!rows || rows.length === 0) return null;
-
-    const user: any = await strapi.db.query('api::user.user').findOne({
-      where: { id: rows[0].user_id },
-    });
-
-    return user?.email || null;
-  } catch {
-    return null;
-  }
+  const customer = await _getCustomerContact(strapi, orderId);
+  return customer?.email || null;
 }

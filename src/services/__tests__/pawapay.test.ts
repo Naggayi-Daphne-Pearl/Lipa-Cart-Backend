@@ -1,4 +1,9 @@
-import { mapPawaPayStatusToPaymentStatus, isPawaPayConfigured } from '../pawapay';
+import {
+  calculatePawaPayCharge,
+  extractPawaPayReason,
+  isPawaPayConfigured,
+  mapPawaPayStatusToPaymentStatus,
+} from '../pawapay';
 
 describe('mapPawaPayStatusToPaymentStatus', () => {
   it('maps COMPLETED to completed', () => {
@@ -56,5 +61,64 @@ describe('isPawaPayConfigured', () => {
   it('returns true when PAWAPAY_API_KEY is set', () => {
     process.env.PAWAPAY_API_KEY = 'test-api-key';
     expect(isPawaPayConfigured()).toBe(true);
+  });
+});
+
+describe('extractPawaPayReason', () => {
+  it('extracts failureReason details from a status array payload', () => {
+    expect(
+      extractPawaPayReason([
+        {
+          status: 'FAILED',
+          failureReason: {
+            failureCode: 'INSUFFICIENT_BALANCE',
+            failureMessage: 'Not enough funds',
+          },
+        },
+      ]),
+    ).toEqual({ code: 'INSUFFICIENT_BALANCE', message: 'Not enough funds' });
+  });
+
+  it('extracts rejectionReason details from a rejection payload', () => {
+    expect(
+      extractPawaPayReason({
+        status: 'REJECTED',
+        rejectionReason: {
+          rejectionCode: 'INVALID_AMOUNT',
+          rejectionMessage: 'Amount should be greater than 0!',
+        },
+      }),
+    ).toEqual({ code: 'INVALID_AMOUNT', message: 'Amount should be greater than 0!' });
+  });
+});
+
+describe('calculatePawaPayCharge', () => {
+  const originalFlat = process.env.PAWAPAY_CHARGE_FLAT;
+  const originalPercent = process.env.PAWAPAY_CHARGE_PERCENT;
+
+  afterEach(() => {
+    if (originalFlat === undefined) {
+      delete process.env.PAWAPAY_CHARGE_FLAT;
+    } else {
+      process.env.PAWAPAY_CHARGE_FLAT = originalFlat;
+    }
+
+    if (originalPercent === undefined) {
+      delete process.env.PAWAPAY_CHARGE_PERCENT;
+    } else {
+      process.env.PAWAPAY_CHARGE_PERCENT = originalPercent;
+    }
+  });
+
+  it('returns zero when no charge config is set', () => {
+    delete process.env.PAWAPAY_CHARGE_FLAT;
+    delete process.env.PAWAPAY_CHARGE_PERCENT;
+    expect(calculatePawaPayCharge(10000)).toBe(0);
+  });
+
+  it('combines flat and percentage fees', () => {
+    process.env.PAWAPAY_CHARGE_FLAT = '250';
+    process.env.PAWAPAY_CHARGE_PERCENT = '1.5';
+    expect(calculatePawaPayCharge(10000)).toBe(400);
   });
 });

@@ -1,6 +1,7 @@
 import { factories } from '@strapi/strapi';
 import { sendPush, saveNotification, isFirebaseReady } from '../../../services/notification';
 import { requireAuth } from '../../../services/auth-helper';
+import { calculatePawaPayCharge } from '../../../services/pawapay';
 
 // Maximum multiplier of the catalog estimated_price that a shopper is allowed
 // to set as actual_price. Catches order-of-magnitude tampering / fat-fingers
@@ -715,9 +716,10 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
 
       const serviceFee = Math.round(subtotal * SERVICE_FEE_RATE);
       const deliveryFee = DELIVERY_FEE_FLAT;
-      const total = subtotal + serviceFee + deliveryFee;
 
       const paymentMethod = String(orderRecord.payment_method || 'mobileMoney');
+      const pawaPayCharge = paymentMethod === 'mobileMoney' ? calculatePawaPayCharge(subtotal) : 0;
+      const total = subtotal + serviceFee + deliveryFee + pawaPayCharge;
       const shouldAutoConfirm = paymentMethod === 'cashOnDelivery';
       const nextStatus = shouldAutoConfirm ? 'payment_confirmed' : 'payment_processing';
 

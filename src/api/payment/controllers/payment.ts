@@ -1,5 +1,6 @@
 import { factories } from '@strapi/strapi';
 import { requireAuth } from '../../../services/auth-helper';
+import { sendPawaPayPaymentReceiptEmail } from '../../../services/email';
 import {
   calculatePawaPayCharge,
   createPawaPayDeposit,
@@ -57,6 +58,31 @@ function providerStatusFromPayment(payment: any): string {
     payment?.status ||
     ''
   );
+}
+
+function getRetryTimeoutSeconds(): number {
+  const parsed = Number.parseInt(String(process.env.PAYMENT_RETRY_TIMEOUT_SECONDS || '180'), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180;
+}
+
+function isServerRetryTimedOut(payment: any): boolean {
+  const createdAtMs = Date.parse(String(payment?.createdAt || ''));
+  if (!Number.isFinite(createdAtMs)) return false;
+  const timeoutMs = getRetryTimeoutSeconds() * 1000;
+  return Date.now() - createdAtMs >= timeoutMs;
+}
+
+function normalizedStoredMsisdn(phone: unknown): string {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+function sendPawaPayReceiptOnFirstCompletion(
+  strapi: any,
+  previousStatus: unknown,
+  paymentId: string | number,
+) {
+  if (String(previousStatus) === 'completed') return;
+  sendPawaPayPaymentReceiptEmail(strapi, paymentId).catch(() => {});
 }
 
 export default factories.createCoreController('api::payment.payment', ({ strapi }) => ({
@@ -119,12 +145,13 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         process.env[`PAWAPAY_CORRESPONDENT_${inferredNetwork.toUpperCase()}`] ||
         inferredCorrespondent;
 
-      let payment: any = await strapi.db.query('api::payment.payment').findOne({
+      const payment: any = await strapi.db.query('api::payment.payment').findOne({
         where: {
           order: { id: order.id },
           method: 'mobile_money',
           provider: 'pawapay',
         },
+        orderBy: { createdAt: 'desc' },
       });
 
       if (payment?.status === 'completed') {
@@ -144,47 +171,115 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         ['pending', 'processing'].includes(String(payment.status)) &&
         payment.transaction_id
       ) {
-        ctx.body = {
-          data: {
-            payment,
-            providerStatus: providerStatusFromPayment(payment),
-            orderStatus: order.status,
-            message: 'A payment request is already in progress for this order.',
-          },
-        };
-        return;
+        const phoneChanged = normalizedStoredMsisdn(payment.phone_number) !== msisdn;
+        const timedOut = isServerRetryTimedOut(payment);
+
+        let liveProviderResponse: any = null;
+        let liveProviderStatus = providerStatusFromPayment(payment);
+        let liveMappedStatus: 'pending' | 'processing' | 'completed' | 'failed' = String(
+          payment.status || 'processing',
+        ) as 'pending' | 'processing' | 'completed' | 'failed';
+
+        try {
+          liveProviderResponse = await getPawaPayDepositStatus(payment.transaction_id);
+          liveProviderStatus = extractProviderStatus(liveProviderResponse);
+          liveMappedStatus = mapPawaPayStatusToPaymentStatus(liveProviderStatus);
+        } catch {
+          if (!timedOut) {
+            ctx.body = {
+              data: {
+                payment,
+                providerStatus: liveProviderStatus,
+                orderStatus: order.status,
+                message: 'A payment request is already in progress for this order.',
+              },
+            };
+            return;
+          }
+        }
+
+        if (liveMappedStatus === 'completed') {
+          const finalizedPayment = await strapi.entityService.update('api::payment.payment', payment.id, {
+            data: {
+              status: 'completed',
+              provider_response: liveProviderResponse || payment.provider_response,
+              completed_at: payment.completed_at || new Date(),
+            },
+          });
+
+          await strapi.entityService.update('api::order.order', order.id, {
+            data: {
+              status: 'payment_confirmed',
+              payment_confirmed_at: order.payment_confirmed_at || new Date(),
+            },
+          });
+
+          ctx.body = {
+            data: {
+              payment: finalizedPayment,
+              providerStatus: liveProviderStatus,
+              orderStatus: 'payment_confirmed',
+              message: 'Payment has already been completed for this order.',
+            },
+          };
+          sendPawaPayReceiptOnFirstCompletion(strapi, payment.status, finalizedPayment.id);
+          return;
+        }
+
+        if (liveMappedStatus === 'failed') {
+          await strapi.entityService.update('api::payment.payment', payment.id, {
+            data: {
+              status: 'failed',
+              provider_response: liveProviderResponse || payment.provider_response,
+              error_message: failureMessageFromPayload(liveProviderResponse, liveProviderStatus),
+            },
+          });
+
+          await strapi.entityService.update('api::order.order', order.id, {
+            data: { status: 'pending' },
+          });
+        } else if (!phoneChanged && !timedOut) {
+          ctx.body = {
+            data: {
+              payment,
+              providerStatus: liveProviderStatus,
+              orderStatus: order.status,
+              message: 'A payment request is already in progress for this order.',
+            },
+          };
+          return;
+        } else if (timedOut) {
+          await strapi.entityService.update('api::payment.payment', payment.id, {
+            data: {
+              status: 'failed',
+              error_message: `Payment attempt timed out after ${getRetryTimeoutSeconds()} seconds`,
+            },
+          });
+
+          await strapi.entityService.update('api::order.order', order.id, {
+            data: { status: 'pending' },
+          });
+        }
       }
 
-      if (!payment) {
-        payment = await strapi.entityService.create('api::payment.payment', {
-          data: {
-            order: order.id,
-            method: 'mobile_money',
-            provider: 'pawapay',
-            amount: totalChargeAmount,
-            currency: 'UGX',
-            status: 'pending',
-            phone_number: `+${msisdn}`,
-          },
-        });
-      } else {
-        payment = await strapi.entityService.update('api::payment.payment', payment.id, {
-          data: {
-            amount: totalChargeAmount,
-            currency: 'UGX',
-            status: 'pending',
-            phone_number: `+${msisdn}`,
-            error_message: null,
-          },
-        });
-      }
+      const newPayment = await strapi.entityService.create('api::payment.payment', {
+        data: {
+          order: order.id,
+          method: 'mobile_money',
+          provider: 'pawapay',
+          amount: totalChargeAmount,
+          currency: 'UGX',
+          status: 'pending',
+          phone_number: `+${msisdn}`,
+        },
+      });
 
       const depositId = crypto.randomUUID();
 
       const providerResponse = await createPawaPayDeposit({
         depositId,
         amount: totalChargeAmount,
-        currency: String(payment.currency || 'UGX'),
+        currency: String(newPayment.currency || 'UGX'),
         phoneNumber: msisdn,
         correspondent: resolvedCorrespondent,
         country: country || process.env.PAWAPAY_COUNTRY || 'UGA',
@@ -195,7 +290,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       const mappedStatus = mapPawaPayStatusToPaymentStatus(providerStatus);
       const providerFailureMessage = failureMessageFromPayload(providerResponse, providerStatus);
 
-      const updatedPayment = await strapi.entityService.update('api::payment.payment', payment.id, {
+      const updatedPayment = await strapi.entityService.update('api::payment.payment', newPayment.id, {
         data: {
           transaction_id: depositId,
           status: mappedStatus,
@@ -233,6 +328,10 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
                 : 'Payment request sent. Approve the mobile money prompt on your phone.',
         },
       };
+
+      if (mappedStatus === 'completed') {
+        sendPawaPayReceiptOnFirstCompletion(strapi, newPayment.status, updatedPayment.id);
+      }
     } catch (error: any) {
       console.error('PawaPay initiateMobileMoney error:', error);
       ctx.throw(500, error?.message || 'Failed to initiate mobile money payment');
@@ -315,6 +414,10 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
           orderStatus: orderStatusPatch.status,
         },
       };
+
+      if (mappedStatus === 'completed') {
+        sendPawaPayReceiptOnFirstCompletion(strapi, payment.status, updatedPayment.id);
+      }
     } catch (error: any) {
       console.error('PawaPay checkStatus error:', error);
       ctx.throw(500, error?.message || 'Failed to check payment status');
@@ -395,6 +498,10 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       });
 
       ctx.body = { ok: true };
+
+      if (mappedStatus === 'completed') {
+        sendPawaPayReceiptOnFirstCompletion(strapi, payment.status, payment.id);
+      }
     } catch (error: any) {
       console.error('PawaPay webhook error:', error);
       ctx.throw(500, error?.message || 'Failed to handle PawaPay webhook');

@@ -3,7 +3,24 @@ const strapiHolder: { current: any } = { current: null };
 const sendKycApprovedLoginEmailMock = jest.fn().mockResolvedValue(true);
 const sendOrderConfirmationEmailMock = jest.fn().mockResolvedValue(true);
 const sendDeliveryReceiptEmailMock = jest.fn().mockResolvedValue(true);
+const sendPawaPayPaymentReceiptEmailMock = jest.fn().mockResolvedValue(true);
 const sendOrderStatusUpdateEmailMock = jest.fn().mockResolvedValue(true);
+
+const calculatePawaPayChargeMock = jest.fn().mockReturnValue(0);
+const createPawaPayDepositMock = jest.fn();
+const extractPawaPayReasonMock = jest.fn().mockReturnValue({ code: null, message: null });
+const getPawaPayDepositStatusMock = jest.fn();
+const isPawaPayConfiguredMock = jest.fn().mockReturnValue(true);
+const mapPawaPayStatusToPaymentStatusMock = jest.fn();
+
+const createCustomerMock = jest.fn();
+const createMobileMoneyMethodMock = jest.fn();
+const initiateChargeMock = jest.fn();
+const getChargeStatusMock = jest.fn();
+const isFlutterwaveConfiguredMock = jest.fn().mockReturnValue(false);
+const mapFlutterwaveStatusToPaymentStatusMock = jest.fn();
+const detectUgandaNetworkMock = jest.fn().mockReturnValue('MTN');
+const verifyWebhookSignatureMock = jest.fn().mockReturnValue(true);
 
 const requireAdminMock = jest.fn();
 const requireAuthMock = jest.fn();
@@ -21,7 +38,30 @@ jest.mock('../../services/email', () => ({
   sendKycApprovedLoginEmail: (...args: any[]) => sendKycApprovedLoginEmailMock(...args),
   sendOrderConfirmationEmail: (...args: any[]) => sendOrderConfirmationEmailMock(...args),
   sendDeliveryReceiptEmail: (...args: any[]) => sendDeliveryReceiptEmailMock(...args),
+  sendPawaPayPaymentReceiptEmail: (...args: any[]) => sendPawaPayPaymentReceiptEmailMock(...args),
   sendOrderStatusUpdateEmail: (...args: any[]) => sendOrderStatusUpdateEmailMock(...args),
+}));
+
+jest.mock('../../services/pawapay', () => ({
+  calculatePawaPayCharge: (...args: any[]) => calculatePawaPayChargeMock(...args),
+  createPawaPayDeposit: (...args: any[]) => createPawaPayDepositMock(...args),
+  extractPawaPayReason: (...args: any[]) => extractPawaPayReasonMock(...args),
+  getPawaPayDepositStatus: (...args: any[]) => getPawaPayDepositStatusMock(...args),
+  isPawaPayConfigured: (...args: any[]) => isPawaPayConfiguredMock(...args),
+  mapPawaPayStatusToPaymentStatus: (...args: any[]) =>
+    mapPawaPayStatusToPaymentStatusMock(...args),
+}));
+
+jest.mock('../../services/flutterwave', () => ({
+  createCustomer: (...args: any[]) => createCustomerMock(...args),
+  createMobileMoneyMethod: (...args: any[]) => createMobileMoneyMethodMock(...args),
+  initiateCharge: (...args: any[]) => initiateChargeMock(...args),
+  getChargeStatus: (...args: any[]) => getChargeStatusMock(...args),
+  isFlutterwaveConfigured: (...args: any[]) => isFlutterwaveConfiguredMock(...args),
+  mapFlutterwaveStatusToPaymentStatus: (...args: any[]) =>
+    mapFlutterwaveStatusToPaymentStatusMock(...args),
+  detectUgandaNetwork: (...args: any[]) => detectUgandaNetworkMock(...args),
+  verifyWebhookSignature: (...args: any[]) => verifyWebhookSignatureMock(...args),
 }));
 
 jest.mock('../../services/auth-helper', () => ({
@@ -324,5 +364,55 @@ describe('email usage instances - controllers', () => {
     await orderController.updateRiderStatus(ctx);
 
     expect(sendDeliveryReceiptEmailMock).toHaveBeenCalledWith(strapiMock, 202, 'ORD-202');
+  });
+
+  it('sends PawaPay payment receipt email when payment status becomes completed', async () => {
+    requireAuthMock.mockResolvedValue({
+      customUser: { id: 44, user_type: 'customer', documentId: 'user-doc-44' },
+    });
+    getPawaPayDepositStatusMock.mockResolvedValue({ status: 'COMPLETED' });
+    mapPawaPayStatusToPaymentStatusMock.mockReturnValue('completed');
+
+    const strapiMock = {
+      db: {
+        query: jest.fn((uid: string) => {
+          if (uid === 'api::payment.payment') {
+            return {
+              findOne: jest.fn().mockResolvedValue({
+                id: 55,
+                documentId: 'payment-doc-55',
+                provider: 'pawapay',
+                transaction_id: 'deposit-123',
+                status: 'processing',
+                order: {
+                  id: 101,
+                  status: 'payment_processing',
+                  order_number: 'ORD-101',
+                  customer: { id: 44 },
+                },
+              }),
+            };
+          }
+          return { findOne: jest.fn().mockResolvedValue(null) };
+        }),
+      },
+      entityService: {
+        update: jest.fn((uid: string, id: number) => {
+          if (uid === 'api::payment.payment') {
+            return Promise.resolve({ id, status: 'completed' });
+          }
+          return Promise.resolve({ id, status: 'payment_confirmed' });
+        }),
+      },
+    };
+
+    strapiHolder.current = strapiMock;
+    jest.resetModules();
+    const paymentController = require('../payment/controllers/payment').default;
+
+    const ctx = makeCtx({}, { id: 'payment-doc-55' });
+    await paymentController.checkStatus(ctx);
+
+    expect(sendPawaPayPaymentReceiptEmailMock).toHaveBeenCalledWith(strapiMock, 55);
   });
 });

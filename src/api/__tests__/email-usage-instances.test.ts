@@ -48,8 +48,7 @@ jest.mock('../../services/pawapay', () => ({
   extractPawaPayReason: (...args: any[]) => extractPawaPayReasonMock(...args),
   getPawaPayDepositStatus: (...args: any[]) => getPawaPayDepositStatusMock(...args),
   isPawaPayConfigured: (...args: any[]) => isPawaPayConfiguredMock(...args),
-  mapPawaPayStatusToPaymentStatus: (...args: any[]) =>
-    mapPawaPayStatusToPaymentStatusMock(...args),
+  mapPawaPayStatusToPaymentStatus: (...args: any[]) => mapPawaPayStatusToPaymentStatusMock(...args),
 }));
 
 jest.mock('../../services/flutterwave', () => ({

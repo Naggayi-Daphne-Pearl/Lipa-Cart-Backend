@@ -1,7 +1,9 @@
 import { factories } from '@strapi/strapi';
 import { requireAuth } from '../../../services/auth-helper';
 import {
+  calculatePawaPayCharge,
   createPawaPayDeposit,
+  extractPawaPayReason,
   getPawaPayDepositStatus,
   isPawaPayConfigured,
   mapPawaPayStatusToPaymentStatus,
@@ -24,6 +26,10 @@ function normalizeMsisdn(phone: string): string {
   return digits;
 }
 
+function networkToPawaPayCorrespondent(network: 'MTN' | 'Airtel'): string {
+  return network === 'Airtel' ? 'AIRTEL_OAPI_UGA' : 'MTN_MOMO_UGA';
+}
+
 function extractProviderStatus(payload: any): string {
   if (!payload) return '';
   if (typeof payload.status === 'string') return payload.status;
@@ -31,6 +37,26 @@ function extractProviderStatus(payload: any): string {
   if (payload.data?.status) return String(payload.data.status);
   if (payload.result?.status) return String(payload.result.status);
   return '';
+}
+
+function normalizeCorrespondent(correspondent: unknown): string {
+  return String(correspondent || '')
+    .trim()
+    .toUpperCase();
+}
+
+function failureMessageFromPayload(payload: any, fallbackStatus: string): string {
+  const reason = extractPawaPayReason(payload);
+  return reason.message || reason.code || fallbackStatus || 'Payment failed';
+}
+
+function providerStatusFromPayment(payment: any): string {
+  return (
+    extractProviderStatus(payment?.provider_response) ||
+    payment?.error_message ||
+    payment?.status ||
+    ''
+  );
 }
 
 export default factories.createCoreController('api::payment.payment', ({ strapi }) => ({
@@ -69,10 +95,29 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         return ctx.badRequest('PawaPay is only available for mobile money orders');
       }
 
+      const baseOrderAmount = Number(order.total || 0);
+      if (!Number.isFinite(baseOrderAmount) || baseOrderAmount <= 0) {
+        return ctx.badRequest('Order total must be greater than 0 before initiating payment');
+      }
+
+      const totalChargeAmount = baseOrderAmount + calculatePawaPayCharge(baseOrderAmount);
+
       const msisdn = normalizeMsisdn(phoneNumber || customUser.phone || '');
       if (!/^256\d{9}$/.test(msisdn)) {
         return ctx.badRequest('A valid Uganda phone number is required');
       }
+      const inferredNetwork = detectUgandaNetwork(msisdn);
+      const inferredCorrespondent = networkToPawaPayCorrespondent(inferredNetwork);
+      const requestedCorrespondent = normalizeCorrespondent(correspondent);
+      if (requestedCorrespondent && requestedCorrespondent !== inferredCorrespondent) {
+        return ctx.badRequest(
+          'Selected mobile money network does not match the payment phone number',
+        );
+      }
+      const resolvedCorrespondent =
+        requestedCorrespondent ||
+        process.env[`PAWAPAY_CORRESPONDENT_${inferredNetwork.toUpperCase()}`] ||
+        inferredCorrespondent;
 
       let payment: any = await strapi.db.query('api::payment.payment').findOne({
         where: {
@@ -82,34 +127,73 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         },
       });
 
+      if (payment?.status === 'completed') {
+        ctx.body = {
+          data: {
+            payment,
+            providerStatus: providerStatusFromPayment(payment),
+            orderStatus: 'payment_confirmed',
+            message: 'Payment has already been completed for this order.',
+          },
+        };
+        return;
+      }
+
+      if (
+        payment &&
+        ['pending', 'processing'].includes(String(payment.status)) &&
+        payment.transaction_id
+      ) {
+        ctx.body = {
+          data: {
+            payment,
+            providerStatus: providerStatusFromPayment(payment),
+            orderStatus: order.status,
+            message: 'A payment request is already in progress for this order.',
+          },
+        };
+        return;
+      }
+
       if (!payment) {
         payment = await strapi.entityService.create('api::payment.payment', {
           data: {
             order: order.id,
             method: 'mobile_money',
             provider: 'pawapay',
-            amount: Number(order.total || 0),
+            amount: totalChargeAmount,
             currency: 'UGX',
             status: 'pending',
             phone_number: `+${msisdn}`,
           },
         });
+      } else {
+        payment = await strapi.entityService.update('api::payment.payment', payment.id, {
+          data: {
+            amount: totalChargeAmount,
+            currency: 'UGX',
+            status: 'pending',
+            phone_number: `+${msisdn}`,
+            error_message: null,
+          },
+        });
       }
 
-      const depositId = payment.transaction_id || crypto.randomUUID();
+      const depositId = crypto.randomUUID();
 
       const providerResponse = await createPawaPayDeposit({
         depositId,
-        amount: Number(order.total || 0),
+        amount: totalChargeAmount,
         currency: String(payment.currency || 'UGX'),
         phoneNumber: msisdn,
-        correspondent: correspondent || process.env.PAWAPAY_CORRESPONDENT_UG || 'MTN_MOMO_UGA',
+        correspondent: resolvedCorrespondent,
         country: country || process.env.PAWAPAY_COUNTRY || 'UGA',
         statementDescription: `LipaCart Order ${order.order_number || order.id}`.slice(0, 22),
       });
 
       const providerStatus = extractProviderStatus(providerResponse);
       const mappedStatus = mapPawaPayStatusToPaymentStatus(providerStatus);
+      const providerFailureMessage = failureMessageFromPayload(providerResponse, providerStatus);
 
       const updatedPayment = await strapi.entityService.update('api::payment.payment', payment.id, {
         data: {
@@ -117,9 +201,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
           status: mappedStatus,
           phone_number: `+${msisdn}`,
           provider_response: providerResponse,
-          ...(mappedStatus === 'failed'
-            ? { error_message: providerStatus || 'PawaPay payment initiation failed' }
-            : {}),
+          ...(mappedStatus === 'failed' ? { error_message: providerFailureMessage } : {}),
           ...(mappedStatus === 'completed' ? { completed_at: new Date() } : {}),
         },
       });
@@ -147,7 +229,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
             mappedStatus === 'completed'
               ? 'Payment completed successfully'
               : mappedStatus === 'failed'
-                ? 'Payment failed to start. Please retry.'
+                ? providerFailureMessage
                 : 'Payment request sent. Approve the mobile money prompt on your phone.',
         },
       };
@@ -191,7 +273,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         ctx.body = {
           data: {
             payment,
-            providerStatus: payment.error_message || payment.status,
+            providerStatus: providerStatusFromPayment(payment),
             orderStatus: payment.order?.status,
           },
         };
@@ -201,14 +283,13 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       const providerResponse = await getPawaPayDepositStatus(payment.transaction_id);
       const providerStatus = extractProviderStatus(providerResponse);
       const mappedStatus = mapPawaPayStatusToPaymentStatus(providerStatus);
+      const providerFailureMessage = failureMessageFromPayload(providerResponse, providerStatus);
 
       const updatedPayment = await strapi.entityService.update('api::payment.payment', payment.id, {
         data: {
           status: mappedStatus,
           provider_response: providerResponse,
-          ...(mappedStatus === 'failed'
-            ? { error_message: providerStatus || 'Payment failed' }
-            : {}),
+          ...(mappedStatus === 'failed' ? { error_message: providerFailureMessage } : {}),
           ...(mappedStatus === 'completed' ? { completed_at: new Date() } : {}),
         },
       });
@@ -275,12 +356,26 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       }
 
       const mappedStatus = mapPawaPayStatusToPaymentStatus(status);
+      const providerFailureMessage = failureMessageFromPayload(payload, status);
+
+      if (payment.status === 'completed' && mappedStatus !== 'completed') {
+        ctx.body = { ok: true, ignored: true, reason: 'Terminal payment already completed' };
+        return;
+      }
+
+      if (
+        ['completed', 'failed'].includes(String(payment.status)) &&
+        payment.status === mappedStatus
+      ) {
+        ctx.body = { ok: true, duplicate: true };
+        return;
+      }
 
       await strapi.entityService.update('api::payment.payment', payment.id, {
         data: {
           status: mappedStatus,
           provider_response: payload,
-          ...(mappedStatus === 'failed' ? { error_message: status } : {}),
+          ...(mappedStatus === 'failed' ? { error_message: providerFailureMessage } : {}),
           ...(mappedStatus === 'completed' ? { completed_at: new Date() } : {}),
         },
       });

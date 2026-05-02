@@ -52,6 +52,12 @@ export default {
       handler: 'order.customerCancelOrder',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    {
+      method: 'PATCH',
+      path: '/orders/:id/switch-to-cod',
+      handler: 'order.switchToCashOnDelivery',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     // Admin confirms payment (auth: false — JWT verified manually in handler)
     {
       method: 'PATCH',

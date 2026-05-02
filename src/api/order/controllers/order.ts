@@ -1167,6 +1167,84 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
   },
 
   /**
+   * Customer switches an unpaid mobile-money order to cash on delivery.
+   * PATCH /api/orders/:id/switch-to-cod
+   */
+  async switchToCashOnDelivery(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can change payment method');
+      }
+
+      const { id } = ctx.params;
+      const order: any = await strapi.db.query('api::order.order').findOne({
+        where: { documentId: id },
+        populate: ['customer'],
+      });
+
+      if (!order) return ctx.notFound('Order not found');
+      if (order.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only update your own orders');
+      }
+      if (String(order.payment_method) !== 'mobileMoney') {
+        return ctx.badRequest('Order is not using mobile money');
+      }
+      if (!['pending', 'payment_processing'].includes(String(order.status))) {
+        return ctx.badRequest('Only unpaid mobile money orders can switch to cash on delivery');
+      }
+
+      const payment: any = await strapi.db.query('api::payment.payment').findOne({
+        where: {
+          order: { id: order.id },
+          provider: 'pawapay',
+        },
+      });
+
+      if (payment?.status === 'completed') {
+        return ctx.badRequest('This order payment has already been completed');
+      }
+
+      if (payment) {
+        await strapi.entityService.update('api::payment.payment', payment.id, {
+          data: {
+            status: 'failed',
+            error_message: payment.error_message || 'Customer switched to cash on delivery',
+          },
+        });
+      }
+
+      const updated = await strapi.entityService.update('api::order.order', order.id, {
+        data: {
+          payment_method: 'cashOnDelivery',
+          status: 'payment_confirmed',
+          payment_confirmed_at: new Date(),
+        },
+        populate: {
+          order_items: { populate: { product: true, substitution_photo: true } },
+          delivery_address: true,
+          customer: true,
+          shopper: true,
+          rider: true,
+        },
+      });
+
+      notifyOrderStatusChange(strapi, order.id, 'payment_confirmed', order.order_number).catch(
+        () => {},
+      );
+      notifyShoppersNewTask(strapi, order.order_number).catch(() => {});
+
+      ctx.body = { data: updated };
+    } catch (error) {
+      console.error('Switch to cash on delivery error:', error);
+      ctx.throw(500, 'Failed to switch payment method');
+    }
+  },
+
+  /**
    * Admin cancels an order from any status.
    * PATCH /api/orders/:id/admin-cancel
    */

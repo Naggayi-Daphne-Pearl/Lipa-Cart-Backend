@@ -27,6 +27,11 @@ interface PawaPayConfig {
   callbackUrl?: string;
 }
 
+interface PawaPayReason {
+  code: string | null;
+  message: string | null;
+}
+
 function normalizeMsisdn(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (digits.startsWith('256')) return digits;
@@ -48,6 +53,64 @@ function getConfig(): PawaPayConfig {
 export function isPawaPayConfigured(): boolean {
   const cfg = getConfig();
   return cfg.apiKey.trim().length > 0;
+}
+
+function extractPrimaryRecord(payload: any): Record<string, any> | null {
+  if (!payload) return null;
+  if (
+    Array.isArray(payload) &&
+    payload.length > 0 &&
+    payload[0] &&
+    typeof payload[0] === 'object'
+  ) {
+    return payload[0] as Record<string, any>;
+  }
+  if (typeof payload === 'object') {
+    return payload as Record<string, any>;
+  }
+  return null;
+}
+
+export function extractPawaPayReason(payload: any): PawaPayReason {
+  const record = extractPrimaryRecord(payload);
+  const failureReason = record?.failureReason;
+  if (failureReason && typeof failureReason === 'object') {
+    return {
+      code: typeof failureReason.failureCode === 'string' ? failureReason.failureCode : null,
+      message:
+        typeof failureReason.failureMessage === 'string' ? failureReason.failureMessage : null,
+    };
+  }
+
+  const rejectionReason = record?.rejectionReason;
+  if (rejectionReason && typeof rejectionReason === 'object') {
+    return {
+      code:
+        typeof rejectionReason.rejectionCode === 'string' ? rejectionReason.rejectionCode : null,
+      message:
+        typeof rejectionReason.rejectionMessage === 'string'
+          ? rejectionReason.rejectionMessage
+          : null,
+    };
+  }
+
+  return { code: null, message: null };
+}
+
+function parseNumberEnv(value: string | undefined): number {
+  const parsed = Number.parseFloat(String(value ?? '0'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function calculatePawaPayCharge(amount: number): number {
+  const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
+  if (safeAmount <= 0) return 0;
+
+  const flatCharge = parseNumberEnv(process.env.PAWAPAY_CHARGE_FLAT);
+  const percentCharge = parseNumberEnv(process.env.PAWAPAY_CHARGE_PERCENT);
+  const percentageAmount = safeAmount * (percentCharge / 100);
+
+  return Math.round(flatCharge + percentageAmount);
 }
 
 function authHeaders(cfg: PawaPayConfig): Record<string, string> {

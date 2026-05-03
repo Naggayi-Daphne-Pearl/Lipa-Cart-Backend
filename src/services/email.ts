@@ -1057,37 +1057,79 @@ export async function sendOrderConfirmationEmail(
 
     const order: any = await strapi.db.query('api::order.order').findOne({
       where: { id: orderId },
+      populate: ['delivery_address'],
     });
 
     const total = order?.total ?? 0;
     const formattedTotal = `UGX ${Number(total).toLocaleString()}`;
+    const isCashOnDelivery = String(order?.payment_method) === 'cashOnDelivery';
+    const deliveryAddress = order?.delivery_address;
+    const addressText = [
+      deliveryAddress?.address_line,
+      deliveryAddress?.city,
+      deliveryAddress?.landmark,
+    ]
+      .filter(Boolean)
+      .join(', ');
 
-    const sections: EmailSection[] = [
-      { kind: 'greeting', text: 'Order confirmed' },
-      {
-        kind: 'paragraph',
-        text: `Your order <strong>#${escapeHtml(orderNumber)}</strong> has been placed successfully.`,
-      },
-      {
-        kind: 'summary',
-        rows: [
-          { label: 'Order Number', value: `#${orderNumber}` },
-          { label: 'Total', value: formattedTotal, accent: 'primary' },
-          { label: 'Status', value: 'Payment Confirmed', accent: 'warn' },
-        ],
-      },
-      {
-        kind: 'paragraph',
-        muted: true,
-        text: "A personal shopper will be assigned to your order shortly. You'll receive updates as your order progresses.",
-      },
-    ];
+    const sections: EmailSection[] = isCashOnDelivery
+      ? [
+          { kind: 'greeting', text: 'Order confirmed - pay on delivery' },
+          {
+            kind: 'paragraph',
+            text: `Your order <strong>#${escapeHtml(orderNumber)}</strong> is confirmed and will be paid in cash when it is delivered.`,
+          },
+          {
+            kind: 'summary',
+            rows: [
+              { label: 'Order Number', value: `#${orderNumber}` },
+              { label: 'Amount Due', value: formattedTotal, accent: 'primary' },
+              { label: 'Payment', value: 'Cash on Delivery', accent: 'warn' },
+              ...(addressText ? [{ label: 'Delivery Address', value: addressText }] : []),
+            ],
+          },
+          {
+            kind: 'notice',
+            title: 'Prepare cash for the rider',
+            body: `Have ${formattedTotal} ready if possible. Riders may not carry change for large notes. Payment is collected on delivery, and your receipt will be issued after cash collection is confirmed.`,
+            tone: 'warn',
+          },
+          {
+            kind: 'paragraph',
+            muted: true,
+            text: "A personal shopper will be assigned shortly. We'll keep you updated as your order progresses in the LipaCart app.",
+          },
+        ]
+      : [
+          { kind: 'greeting', text: 'Order confirmed' },
+          {
+            kind: 'paragraph',
+            text: `Your order <strong>#${escapeHtml(orderNumber)}</strong> has been placed successfully.`,
+          },
+          {
+            kind: 'summary',
+            rows: [
+              { label: 'Order Number', value: `#${orderNumber}` },
+              { label: 'Total', value: formattedTotal, accent: 'primary' },
+              { label: 'Status', value: 'Payment Confirmed', accent: 'warn' },
+            ],
+          },
+          {
+            kind: 'paragraph',
+            muted: true,
+            text: "A personal shopper will be assigned to your order shortly. You'll receive updates as your order progresses.",
+          },
+        ];
     await sendEmail({
       to: customerEmail,
-      subject: `Order Confirmed — #${orderNumber}`,
+      subject: isCashOnDelivery
+        ? `Order Confirmed - Pay on Delivery #${orderNumber}`
+        : `Order Confirmed — #${orderNumber}`,
       text: renderSectionsPlainText(sections),
       html: renderShell({
-        preheader: `Order #${orderNumber} confirmed — ${formattedTotal}`,
+        preheader: isCashOnDelivery
+          ? `Order #${orderNumber} confirmed - ${formattedTotal} due on delivery`
+          : `Order #${orderNumber} confirmed — ${formattedTotal}`,
         sections,
       }),
     });

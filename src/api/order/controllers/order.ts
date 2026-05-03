@@ -8,6 +8,22 @@ import { sendOrderConfirmationEmail, sendDeliveryReceiptEmail } from '../../../s
 import { requireAuth, requireAdmin } from '../../../services/auth-helper';
 import { checkServiceArea } from '../../../services/service-area';
 
+async function resolveOrderByIdOrDocumentId(strapi: any, orderRef: string) {
+  const numericId = Number(orderRef);
+  if (Number.isFinite(numericId) && String(numericId) === orderRef) {
+    const byId = await strapi.db.query('api::order.order').findOne({
+      where: { id: numericId },
+      populate: ['customer'],
+    });
+    if (byId) return byId;
+  }
+
+  return strapi.db.query('api::order.order').findOne({
+    where: { documentId: orderRef },
+    populate: ['customer'],
+  });
+}
+
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   /**
    * Authenticated customers create an order via POST /api/orders.
@@ -1490,6 +1506,174 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
     } catch (error) {
       console.error('Admin reassign rider error:', error);
       ctx.throw(500, 'Failed to reassign rider');
+    }
+  },
+
+  /**
+   * Verify delivery code for an order.
+   * Rider calls this endpoint before marking the order as delivered.
+   * POST /orders/{id}/verify-delivery-code
+   * Body: { code: "1234", gps_lat?: number, gps_lng?: number, photo_url?: string }
+   */
+  async verifyDeliveryCode(ctx: any) {
+    try {
+      const { id } = ctx.params;
+      const { code, gps_lat, gps_lng, photo_url } = ctx.request.body || {};
+
+      if (!code || typeof code !== 'string') {
+        return ctx.badRequest('Delivery code is required and must be a string');
+      }
+
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
+
+      if (!order) {
+        return ctx.notFound('Order not found');
+      }
+
+      // Check if code has already been verified
+      if (order.delivery_code_verified_at) {
+        return ctx.badRequest('Delivery code has already been verified for this order');
+      }
+
+      // Import the delivery code service functions
+      const {
+        validateDeliveryCode,
+        checkCodeAttemptStatus,
+        recordCodeAttempt,
+        verifyDeliveryCode,
+      } = await import('../../../services/delivery-code');
+
+      // Check attempt limit first
+      const attemptStatus = checkCodeAttemptStatus(order);
+      if (attemptStatus.locked) {
+        return ctx.forbidden(
+          'Maximum code verification attempts exceeded. Please contact support.',
+        );
+      }
+
+      // Record the attempt
+      const newAttemptStatus = await recordCodeAttempt(strapi, id);
+
+      // Validate the code
+      const validation = validateDeliveryCode(order, code);
+      if (!validation.valid) {
+        return ctx.badRequest({
+          message: validation.error,
+          attempts_remaining: newAttemptStatus.remainingAttempts,
+          locked: newAttemptStatus.locked,
+        });
+      }
+
+      // Code is valid, record verification with evidence
+      const evidence = {
+        gps_lat: typeof gps_lat === 'number' ? gps_lat : undefined,
+        gps_lng: typeof gps_lng === 'number' ? gps_lng : undefined,
+        photo_url: typeof photo_url === 'string' ? photo_url : undefined,
+      };
+
+      await verifyDeliveryCode(strapi, id, evidence);
+
+      // Return success — code is verified
+      ctx.body = {
+        data: {
+          verified: true,
+          message: 'Delivery code verified successfully',
+          order_id: id,
+        },
+      };
+    } catch (error: any) {
+      console.error('Delivery code verification error:', error);
+      ctx.throw(500, error?.message || 'Failed to verify delivery code');
+    }
+  },
+
+  /**
+   * Resend delivery code to customer.
+   * Customer can call this to resend their code before delivery.
+   * POST /orders/{id}/resend-delivery-code
+   * Body: { method: 'sms' | 'push' | 'whatsapp' }
+   */
+  async resendDeliveryCode(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+
+      const { id } = ctx.params;
+      const { method = 'sms' } = ctx.request.body || {};
+
+      if (!['sms', 'push', 'whatsapp'].includes(method)) {
+        return ctx.badRequest("method must be 'sms', 'push', or 'whatsapp'");
+      }
+
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
+
+      if (!order) {
+        return ctx.notFound('Order not found');
+      }
+
+      // Verify ownership
+      const customUser = auth.customUser;
+      if (order.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only resend code for your own orders');
+      }
+
+      const { resendDeliveryCode } = await import('../../../services/delivery-code');
+
+      const result = await resendDeliveryCode(strapi, id, method);
+
+      if (!result.success) {
+        return ctx.badRequest(result.message);
+      }
+
+      ctx.body = { data: result };
+    } catch (error: any) {
+      console.error('Resend delivery code error:', error);
+      ctx.throw(500, error?.message || 'Failed to resend code');
+    }
+  },
+
+  /**
+   * Forward delivery code to a third party (gift scenario).
+   * Customer can forward their delivery code to someone else.
+   * POST /orders/{id}/forward-delivery-code
+   * Body: { recipient_phone: "+256701234567" }
+   */
+  async forwardDeliveryCode(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+
+      const { id } = ctx.params;
+      const { recipient_phone } = ctx.request.body || {};
+
+      if (!recipient_phone || typeof recipient_phone !== 'string') {
+        return ctx.badRequest('recipient_phone is required');
+      }
+
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
+
+      if (!order) {
+        return ctx.notFound('Order not found');
+      }
+
+      // Verify ownership
+      const customUser = auth.customUser;
+      if (order.customer?.id !== customUser.id) {
+        return ctx.forbidden('You can only forward code for your own orders');
+      }
+
+      const { forwardDeliveryCode } = await import('../../../services/delivery-code');
+
+      const result = await forwardDeliveryCode(strapi, id, recipient_phone);
+
+      if (!result.success) {
+        return ctx.badRequest(result.message);
+      }
+
+      ctx.body = { data: result };
+    } catch (error: any) {
+      console.error('Forward delivery code error:', error);
+      ctx.throw(500, error?.message || 'Failed to forward code');
     }
   },
 }));

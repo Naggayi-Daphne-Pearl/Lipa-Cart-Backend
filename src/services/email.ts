@@ -1091,7 +1091,7 @@ export async function sendOrderConfirmationEmail(
           {
             kind: 'notice',
             title: 'Prepare cash for the rider',
-            body: `Have ${formattedTotal} ready if possible. Riders may not carry change for large notes. Payment is collected on delivery, and your receipt will be issued after cash collection is confirmed.`,
+            body: `Have ${formattedTotal} ready if possible. Riders may not carry change for large notes. Payment is collected on delivery, and we will share your receipt details after delivery processing is complete.`,
             tone: 'warn',
           },
           {

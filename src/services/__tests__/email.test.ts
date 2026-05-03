@@ -163,7 +163,7 @@ describe('sendOrderConfirmationEmail', () => {
     expect(args.subject).toBe('Order Confirmed - Pay on Delivery #ORD-77');
     expect(args.html).toContain('Amount Due');
     expect(args.html).toContain('Cash on Delivery');
-    expect(args.html).toContain('receipt will be issued after cash collection is confirmed');
+    expect(args.html).toContain('receipt details after delivery processing is complete');
     expect(args.attachments).toBeUndefined();
   });
 

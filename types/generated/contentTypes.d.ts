@@ -658,11 +658,20 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
   attributes: {
     cancellation_reason: Schema.Attribute.Text;
     cancelled_at: Schema.Attribute.DateTime;
+    code_verification_evidence: Schema.Attribute.JSON;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> & Schema.Attribute.Private;
     customer: Schema.Attribute.Relation<'manyToOne', 'api::user.user'>;
     delivered_at: Schema.Attribute.DateTime;
     delivery_address: Schema.Attribute.Relation<'manyToOne', 'api::address.address'>;
+    delivery_code: Schema.Attribute.String &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 4;
+        minLength: 4;
+      }>;
+    delivery_code_attempts: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    delivery_code_first_attempt_at: Schema.Attribute.DateTime;
+    delivery_code_verified_at: Schema.Attribute.DateTime;
     delivery_fee: Schema.Attribute.Decimal & Schema.Attribute.Required;
     delivery_proof_url: Schema.Attribute.String;
     delivery_slot: Schema.Attribute.String;

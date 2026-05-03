@@ -2,6 +2,7 @@ import { factories } from '@strapi/strapi';
 import { sendPush, saveNotification, isFirebaseReady } from '../../../services/notification';
 import { requireAuth } from '../../../services/auth-helper';
 import { calculatePawaPayCharge } from '../../../services/pawapay';
+import { generateDeliveryCode } from '../../../services/delivery-code';
 
 // Maximum multiplier of the catalog estimated_price that a shopper is allowed
 // to set as actual_price. Catches order-of-magnitude tampering / fat-fingers
@@ -728,6 +729,8 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       // order is locked — bulkCreate's status guard will reject any further
       // attempts to mutate items, and shoppers can claim the order.
       try {
+        const deliveryCode = generateDeliveryCode();
+
         await strapi.entityService.update('api::order.order', orderRecord.id, {
           data: {
             subtotal,
@@ -736,6 +739,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             total,
             status: nextStatus,
             payment_confirmed_at: shouldAutoConfirm ? new Date() : null,
+            delivery_code: deliveryCode,
           },
         });
 

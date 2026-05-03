@@ -684,8 +684,6 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     order_number: Schema.Attribute.String & Schema.Attribute.Required & Schema.Attribute.Unique;
     payment_confirmed_at: Schema.Attribute.DateTime;
     payment_method: Schema.Attribute.Enumeration<['mobileMoney', 'card', 'cashOnDelivery']>;
-    payment_status: Schema.Attribute.Enumeration<['pending', 'completed', 'failed', 'cancelled']> &
-      Schema.Attribute.DefaultTo<'pending'>;
     payments: Schema.Attribute.Relation<'oneToMany', 'api::payment.payment'>;
     picked_up_at: Schema.Attribute.DateTime;
     promo_code: Schema.Attribute.String;

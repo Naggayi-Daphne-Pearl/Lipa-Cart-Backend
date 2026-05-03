@@ -84,11 +84,7 @@
     },
     "payment_method": {
       "type": "enumeration",
-      "enum": [
-        "mobileMoney",
-        "card",
-        "cashOnDelivery"
-      ]
+      "enum": ["mobileMoney", "card", "cashOnDelivery"]
     },
     "special_instructions": {
       "type": "text"
@@ -150,6 +146,24 @@
       "relation": "oneToOne",
       "target": "api::rating.rating",
       "mappedBy": "order"
+    },
+    "delivery_code": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 4
+    },
+    "delivery_code_attempts": {
+      "type": "integer",
+      "default": 0
+    },
+    "delivery_code_verified_at": {
+      "type": "datetime"
+    },
+    "delivery_code_first_attempt_at": {
+      "type": "datetime"
+    },
+    "code_verification_evidence": {
+      "type": "json"
     }
   }
 }

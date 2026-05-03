@@ -96,6 +96,25 @@ export default {
       handler: 'order.adminReassignRider',
       config: { auth: false, policies: [], middlewares: [] },
     },
+    // Delivery code verification endpoints (auth: false — JWT verified manually in handler)
+    {
+      method: 'POST',
+      path: '/orders/:id/verify-delivery-code',
+      handler: 'order.verifyDeliveryCode',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/orders/:id/resend-delivery-code',
+      handler: 'order.resendDeliveryCode',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
+      path: '/orders/:id/forward-delivery-code',
+      handler: 'order.forwardDeliveryCode',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
     // Standard core CRUD routes (authenticated by default)
     { method: 'GET', path: '/orders', handler: 'order.find' },
     { method: 'GET', path: '/orders/:id', handler: 'order.findOne' },

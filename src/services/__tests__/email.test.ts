@@ -51,7 +51,11 @@ function lastSendMailArgs() {
 }
 
 /** Helper: build a mock strapi with a seeded customer + order lookup. */
-function mockStrapi(customerEmail: string | null, total = 150000) {
+function mockStrapi(
+  customerEmail: string | null,
+  total = 150000,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     db: {
       connection: {
@@ -60,7 +64,17 @@ function mockStrapi(customerEmail: string | null, total = 150000) {
       query: () => ({
         findOne: jest.fn().mockImplementation(({ where }: any) => {
           if (where?.id === 1) return Promise.resolve({ email: customerEmail });
-          return Promise.resolve({ id: where?.id, total });
+          return Promise.resolve({
+            id: where?.id,
+            total,
+            payment_method: 'mobileMoney',
+            delivery_address: {
+              address_line: 'Plot 12 Kampala Road',
+              city: 'Kampala',
+              landmark: 'Acacia Mall',
+            },
+            ...overrides,
+          });
         }),
       }),
     },
@@ -138,6 +152,19 @@ describe('sendOrderConfirmationEmail', () => {
     expect(args.html).toContain('#ORD-42');
     expect(args.html).toContain('UGX 250,000');
     expect(args.html).toContain('Payment Confirmed');
+  });
+
+  it('uses COD-specific copy when the order will be paid on delivery', async () => {
+    const strapi = mockStrapi('customer@example.com', 58125, {
+      payment_method: 'cashOnDelivery',
+    });
+    await sendOrderConfirmationEmail(strapi, 77, 'ORD-77');
+    const args = lastSendMailArgs();
+    expect(args.subject).toBe('Order Confirmed - Pay on Delivery #ORD-77');
+    expect(args.html).toContain('Amount Due');
+    expect(args.html).toContain('Cash on Delivery');
+    expect(args.html).toContain('receipt details after delivery processing is complete');
+    expect(args.attachments).toBeUndefined();
   });
 
   it('silently skips when the order has no linked customer', async () => {

@@ -732,6 +732,8 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
       // order is locked — bulkCreate's status guard will reject any further
       // attempts to mutate items, and shoppers can claim the order.
       try {
+        const deliveryCode = generateDeliveryCode();
+
         await strapi.entityService.update('api::order.order', orderRecord.id, {
           data: {
             subtotal,
@@ -740,6 +742,7 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
             total,
             status: nextStatus,
             payment_confirmed_at: shouldAutoConfirm ? new Date() : null,
+            delivery_code: deliveryCode,
           },
         });
 

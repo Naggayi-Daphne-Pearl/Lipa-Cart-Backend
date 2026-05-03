@@ -2,6 +2,12 @@ export default {
   routes: [
     {
       method: 'POST',
+      path: '/payments/validate-details',
+      handler: 'payment.validatePaymentDetails',
+      config: { auth: false, policies: [], middlewares: [] },
+    },
+    {
+      method: 'POST',
       path: '/payments/mobile-money/initiate',
       handler: 'payment.initiateMobileMoney',
       config: { auth: false, policies: [], middlewares: [] },

@@ -4,6 +4,170 @@
  */
 
 import crypto from 'crypto';
+import { sendPush, saveNotification } from './notification';
+import { sendSms } from './sms';
+
+function normalizePhoneForSms(phone: unknown): string | null {
+  if (typeof phone !== 'string') return null;
+  const raw = phone.trim();
+  if (!raw) return null;
+
+  const digitsOnly = raw.replace(/\D/g, '');
+  if (!digitsOnly) return null;
+
+  if (raw.startsWith('+') && /^\+\d{10,15}$/.test(raw)) {
+    return raw;
+  }
+
+  if (/^256\d{9}$/.test(digitsOnly)) {
+    return `+${digitsOnly}`;
+  }
+
+  if (/^254\d{9}$/.test(digitsOnly)) {
+    return `+${digitsOnly}`;
+  }
+
+  if (/^0\d{9}$/.test(digitsOnly)) {
+    return `+256${digitsOnly.slice(1)}`;
+  }
+
+  return null;
+}
+
+function buildDeliveryCodeSmsMessage(orderNumber: string, deliveryCode: string): string {
+  return `LipaCart delivery code for order #${orderNumber}: ${deliveryCode}. Share it with your rider only at handoff.`;
+}
+
+async function loadOrderWithCustomer(strapi: any, orderId: string | number): Promise<any> {
+  const orderRef = String(orderId);
+  const numericId = Number(orderRef);
+
+  if (Number.isFinite(numericId) && String(numericId) === orderRef) {
+    const byId = await strapi.db.query('api::order.order').findOne({
+      where: { id: numericId },
+      populate: ['customer'],
+    });
+    if (byId) return byId;
+  }
+
+  return strapi.db.query('api::order.order').findOne({
+    where: { documentId: orderRef },
+    populate: ['customer'],
+  });
+}
+
+async function ensureDeliveryCode(strapi: any, order: any): Promise<{ code: string; order: any }> {
+  if (order?.delivery_code) {
+    return { code: String(order.delivery_code), order };
+  }
+
+  const generatedCode = generateDeliveryCode();
+  await strapi.entityService.update('api::order.order', order.id, {
+    data: {
+      delivery_code: generatedCode,
+      delivery_code_attempts: 0,
+      delivery_code_first_attempt_at: null,
+    },
+  });
+
+  const refreshedOrder = await loadOrderWithCustomer(strapi, order.id);
+  return {
+    code: generatedCode,
+    order: refreshedOrder ?? { ...order, delivery_code: generatedCode },
+  };
+}
+
+async function sendCodeToPhone(
+  phone: unknown,
+  orderNumber: string,
+  deliveryCode: string,
+): Promise<boolean> {
+  const normalizedPhone = normalizePhoneForSms(phone);
+  if (!normalizedPhone) return false;
+
+  const smsMessage = buildDeliveryCodeSmsMessage(orderNumber, deliveryCode);
+  return sendSms(normalizedPhone, smsMessage);
+}
+
+async function sendCodePush(
+  customer: any,
+  orderId: string | number,
+  deliveryCode: string,
+): Promise<boolean> {
+  const fcmToken = typeof customer?.fcm_token === 'string' ? customer.fcm_token.trim() : '';
+  if (!fcmToken) return false;
+
+  return sendPush(
+    fcmToken,
+    'Delivery Code Ready',
+    `Your 4-digit delivery code is ${deliveryCode}`,
+    {
+      type: 'delivery_code',
+      orderId: String(orderId),
+      route: '/customer/orders',
+    },
+  );
+}
+
+export async function dispatchDeliveryCodeToCustomer(
+  strapi: any,
+  orderId: string | number,
+): Promise<{ success: boolean; message: string }> {
+  const initialOrder = await loadOrderWithCustomer(strapi, orderId);
+  let order = initialOrder;
+  if (!order) {
+    return { success: false, message: 'Order not found' };
+  }
+
+  const ensured = await ensureDeliveryCode(strapi, order);
+  order = ensured.order;
+
+  const customer = order.customer;
+  if (!customer) {
+    return { success: false, message: 'Order has no customer to notify' };
+  }
+
+  const orderNumber = String(order.order_number || order.id);
+  const deliveryCode = ensured.code;
+
+  if (customer.id) {
+    await saveNotification(
+      strapi,
+      customer.id,
+      'Delivery Code Ready',
+      `Your 4-digit delivery code is ${deliveryCode}. Share it only at handoff.`,
+      'delivery_code',
+      orderNumber,
+      {
+        type: 'delivery_code',
+        orderId: String(order.id),
+        route: '/customer/orders',
+      },
+    );
+  }
+
+  const [smsSent, pushSent] = await Promise.all([
+    sendCodeToPhone(customer.phone, orderNumber, deliveryCode),
+    sendCodePush(customer, order.id, deliveryCode),
+  ]);
+
+  if (!smsSent && !pushSent) {
+    return {
+      success: false,
+      message: 'Delivery code could not be sent (no valid SMS/push channel)',
+    };
+  }
+
+  return {
+    success: true,
+    message:
+      smsSent && pushSent
+        ? 'Delivery code sent via SMS and push'
+        : smsSent
+          ? 'Delivery code sent via SMS'
+          : 'Delivery code sent via push',
+  };
+}
 
 /**
  * Generate a random 4-digit delivery code.
@@ -71,7 +235,7 @@ export async function recordCodeAttempt(
   strapi: any,
   orderId: string | number,
 ): Promise<{ locked: boolean; remainingAttempts: number }> {
-  const order: any = await strapi.db.query('api::order.order').findOne({ where: { id: orderId } });
+  const order: any = await loadOrderWithCustomer(strapi, orderId);
 
   if (!order) {
     throw new Error(`Order ${orderId} not found`);
@@ -87,7 +251,7 @@ export async function recordCodeAttempt(
   const newAttemptCount = currentAttempts + 1;
   const firstAttemptAt = order.delivery_code_first_attempt_at || new Date().toISOString();
 
-  await strapi.entityService.update('api::order.order', orderId, {
+  await strapi.entityService.update('api::order.order', order.id, {
     data: {
       delivery_code_attempts: newAttemptCount,
       delivery_code_first_attempt_at: firstAttemptAt,
@@ -113,6 +277,11 @@ export async function verifyDeliveryCode(
     photo_url?: string;
   },
 ): Promise<void> {
+  const order = await loadOrderWithCustomer(strapi, orderId);
+  if (!order) {
+    throw new Error(`Order ${orderId} not found`);
+  }
+
   const now = new Date();
   const verifiedAt = now.toISOString();
 
@@ -128,7 +297,7 @@ export async function verifyDeliveryCode(
     (key) => (evidencePayload as any)[key] === undefined && delete (evidencePayload as any)[key],
   );
 
-  await strapi.entityService.update('api::order.order', orderId, {
+  await strapi.entityService.update('api::order.order', order.id, {
     data: {
       delivery_code_verified_at: verifiedAt,
       code_verification_evidence: evidencePayload,
@@ -141,7 +310,12 @@ export async function verifyDeliveryCode(
  * Invalidate a delivery code (called on order cancellation or timeout).
  */
 export async function invalidateDeliveryCode(strapi: any, orderId: string | number): Promise<void> {
-  await strapi.entityService.update('api::order.order', orderId, {
+  const order = await loadOrderWithCustomer(strapi, orderId);
+  if (!order) {
+    throw new Error(`Order ${orderId} not found`);
+  }
+
+  await strapi.entityService.update('api::order.order', order.id, {
     data: {
       delivery_code: null,
       delivery_code_attempts: 0,
@@ -160,34 +334,45 @@ export async function resendDeliveryCode(
   orderId: string | number,
   method: 'sms' | 'push' | 'whatsapp',
 ): Promise<{ success: boolean; message: string }> {
-  const order: any = await strapi.db.query('api::order.order').findOne({
-    where: { id: orderId },
-    populate: ['customer'],
-  });
+  const initialOrder = await loadOrderWithCustomer(strapi, orderId);
+  let order = initialOrder;
 
   if (!order) {
     return { success: false, message: 'Order not found' };
   }
 
-  if (!order.delivery_code) {
-    return { success: false, message: 'No delivery code to resend' };
+  const ensured = await ensureDeliveryCode(strapi, order);
+  order = ensured.order;
+
+  const customer = order.customer;
+  if (!customer) {
+    return { success: false, message: 'Order has no customer to notify' };
   }
 
-  // TODO: Integrate SMS/push providers here
-  // For now, just log the action
-  strapi.log.info(
-    `[DELIVERY_CODE] Resend code via ${method} for order ${orderId}: ${order.delivery_code}`,
-  );
+  const orderNumber = String(order.order_number || order.id);
+  const deliveryCode = ensured.code;
 
-  // In future, would call:
-  // - Twilio for SMS
-  // - Firebase for push
-  // - WhatsApp business API
+  if (method === 'push') {
+    const pushSent = await sendCodePush(customer, order.id, deliveryCode);
+    if (!pushSent) {
+      return { success: false, message: 'Push token not available or push delivery failed' };
+    }
+    return { success: true, message: 'Code resent via push' };
+  }
 
-  return {
-    success: true,
-    message: `Code resent via ${method}`,
-  };
+  const smsSent = await sendCodeToPhone(customer.phone, orderNumber, deliveryCode);
+  if (!smsSent) {
+    return { success: false, message: 'SMS delivery failed or customer phone is invalid' };
+  }
+
+  if (method === 'whatsapp') {
+    strapi.log.info(
+      `[DELIVERY_CODE] WhatsApp not configured, fell back to SMS for order ${orderId}`,
+    );
+    return { success: true, message: 'WhatsApp not configured, code sent via SMS instead' };
+  }
+
+  return { success: true, message: 'Code resent via SMS' };
 }
 
 /**
@@ -199,23 +384,30 @@ export async function forwardDeliveryCode(
   orderId: string | number,
   recipientPhone: string,
 ): Promise<{ success: boolean; message: string }> {
-  const order: any = await strapi.db.query('api::order.order').findOne({ where: { id: orderId } });
+  const initialOrder: any = await loadOrderWithCustomer(strapi, orderId);
+  let order = initialOrder;
 
   if (!order) {
     return { success: false, message: 'Order not found' };
   }
 
-  if (!order.delivery_code) {
-    return { success: false, message: 'No delivery code to forward' };
+  const ensured = await ensureDeliveryCode(strapi, order);
+  order = ensured.order;
+
+  const normalizedRecipient = normalizePhoneForSms(recipientPhone);
+  if (!normalizedRecipient) {
+    return { success: false, message: 'Recipient phone number is invalid' };
   }
 
-  // TODO: Audit trail — log who forwarded the code and to whom
-  strapi.log.info(`[DELIVERY_CODE] Code forwarded for order ${orderId} to ${recipientPhone}`);
+  const orderNumber = String(order.order_number || order.id);
+  const deliveryCode = ensured.code;
+  const smsMessage = buildDeliveryCodeSmsMessage(orderNumber, deliveryCode);
+  const sent = await sendSms(normalizedRecipient, smsMessage);
 
-  // TODO: Send via SMS/WhatsApp
+  if (!sent) {
+    return { success: false, message: 'Failed to send code to recipient phone' };
+  }
 
-  return {
-    success: true,
-    message: `Code forwarded to ${recipientPhone}`,
-  };
+  strapi.log.info(`[DELIVERY_CODE] Code forwarded for order ${orderId} to ${normalizedRecipient}`);
+  return { success: true, message: `Code forwarded to ${normalizedRecipient}` };
 }

@@ -8,6 +8,22 @@ import { sendOrderConfirmationEmail, sendDeliveryReceiptEmail } from '../../../s
 import { requireAuth, requireAdmin } from '../../../services/auth-helper';
 import { checkServiceArea } from '../../../services/service-area';
 
+async function resolveOrderByIdOrDocumentId(strapi: any, orderRef: string) {
+  const numericId = Number(orderRef);
+  if (Number.isFinite(numericId) && String(numericId) === orderRef) {
+    const byId = await strapi.db.query('api::order.order').findOne({
+      where: { id: numericId },
+      populate: ['customer'],
+    });
+    if (byId) return byId;
+  }
+
+  return strapi.db.query('api::order.order').findOne({
+    where: { documentId: orderRef },
+    populate: ['customer'],
+  });
+}
+
 export default factories.createCoreController('api::order.order', ({ strapi }) => ({
   /**
    * Authenticated customers create an order via POST /api/orders.
@@ -1509,7 +1525,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('Delivery code is required and must be a string');
       }
 
-      const order: any = await strapi.db.query('api::order.order').findOne({ where: { id } });
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
 
       if (!order) {
         return ctx.notFound('Order not found');
@@ -1590,9 +1606,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest("method must be 'sms', 'push', or 'whatsapp'");
       }
 
-      const order: any = await strapi.db
-        .query('api::order.order')
-        .findOne({ where: { id }, populate: ['customer'] });
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
 
       if (!order) {
         return ctx.notFound('Order not found');
@@ -1600,7 +1614,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       // Verify ownership
       const customUser = auth.customUser;
-      if (order.customer?.id !== customUser.customer?.id) {
+      if (order.customer?.id !== customUser.id) {
         return ctx.forbidden('You can only resend code for your own orders');
       }
 
@@ -1637,9 +1651,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         return ctx.badRequest('recipient_phone is required');
       }
 
-      const order: any = await strapi.db
-        .query('api::order.order')
-        .findOne({ where: { id }, populate: ['customer'] });
+      const order: any = await resolveOrderByIdOrDocumentId(strapi, String(id));
 
       if (!order) {
         return ctx.notFound('Order not found');
@@ -1647,7 +1659,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
 
       // Verify ownership
       const customUser = auth.customUser;
-      if (order.customer?.id !== customUser.customer?.id) {
+      if (order.customer?.id !== customUser.id) {
         return ctx.forbidden('You can only forward code for your own orders');
       }
 

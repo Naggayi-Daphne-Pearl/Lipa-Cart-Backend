@@ -2,7 +2,10 @@ import { factories } from '@strapi/strapi';
 import { sendPush, saveNotification, isFirebaseReady } from '../../../services/notification';
 import { requireAuth } from '../../../services/auth-helper';
 import { calculatePawaPayCharge } from '../../../services/pawapay';
-import { generateDeliveryCode } from '../../../services/delivery-code';
+import {
+  generateDeliveryCode,
+  dispatchDeliveryCodeToCustomer,
+} from '../../../services/delivery-code';
 
 // Maximum multiplier of the catalog estimated_price that a shopper is allowed
 // to set as actual_price. Catches order-of-magnitude tampering / fat-fingers
@@ -766,6 +769,21 @@ export default factories.createCoreController('api::order-item.order-item', ({ s
         }
         console.error('ERROR: Failed to finalize order after bulkCreate:', updateErr);
         return ctx.throw(500, 'Failed to finalize order');
+      }
+
+      // Best-effort dispatch of the handoff code. Order placement should not
+      // fail if SMS/push providers are temporarily unavailable.
+      try {
+        const dispatchResult = await dispatchDeliveryCodeToCustomer(strapi, orderRecord.id);
+        if (!dispatchResult.success) {
+          strapi.log.warn(
+            `[DELIVERY_CODE] Auto-send failed for order ${orderRecord.id}: ${dispatchResult.message}`,
+          );
+        }
+      } catch (dispatchErr: any) {
+        strapi.log.error(
+          `[DELIVERY_CODE] Auto-send exception for order ${orderRecord.id}: ${dispatchErr?.message}`,
+        );
       }
 
       ctx.body = {

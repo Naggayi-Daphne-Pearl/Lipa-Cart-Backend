@@ -1236,6 +1236,7 @@ export default factories.createCoreController('api::order.order', ({ strapi }) =
         () => {},
       );
       notifyShoppersNewTask(strapi, order.order_number).catch(() => {});
+      sendOrderConfirmationEmail(strapi, order.id, order.order_number).catch(() => {});
 
       ctx.body = { data: updated };
     } catch (error) {

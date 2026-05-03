@@ -84,11 +84,12 @@
     },
     "payment_method": {
       "type": "enumeration",
-      "enum": [
-        "mobileMoney",
-        "card",
-        "cashOnDelivery"
-      ]
+      "enum": ["mobileMoney", "card", "cashOnDelivery"]
+    },
+    "payment_status": {
+      "type": "enumeration",
+      "enum": ["pending", "completed", "failed", "cancelled"],
+      "default": "pending"
     },
     "special_instructions": {
       "type": "text"

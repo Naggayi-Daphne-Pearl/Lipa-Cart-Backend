@@ -85,6 +85,33 @@ function sendPawaPayReceiptOnFirstCompletion(
   sendPawaPayPaymentReceiptEmail(strapi, paymentId).catch(() => {});
 }
 
+async function rollbackUnpaidOrderAfterInitiationFailure(strapi: any, order: any) {
+  const existingPayments: any[] = await strapi.db.query('api::payment.payment').findMany({
+    where: { order: { id: order.id } },
+  });
+
+  const hasCompletedPayment = existingPayments.some((p) => String(p.status) === 'completed');
+  if (hasCompletedPayment) {
+    return false;
+  }
+
+  const orderItems: any[] = await strapi.db.query('api::order-item.order-item').findMany({
+    where: { order: { id: order.id } },
+    select: ['id'],
+  });
+
+  for (const item of orderItems) {
+    await strapi.entityService.delete('api::order-item.order-item', item.id);
+  }
+
+  for (const payment of existingPayments) {
+    await strapi.entityService.delete('api::payment.payment', payment.id);
+  }
+
+  await strapi.entityService.delete('api::order.order', order.id);
+  return true;
+}
+
 export default factories.createCoreController('api::payment.payment', ({ strapi }) => ({
   async initiateMobileMoney(ctx: any) {
     try {
@@ -100,7 +127,8 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         return ctx.badRequest('PawaPay is not configured on the server');
       }
 
-      const { orderId, phoneNumber, correspondent, country } = ctx.request.body || {};
+      const { orderId, phoneNumber, correspondent, country, rollbackOrderOnFailure, forceRetry } =
+        ctx.request.body || {};
       if (!orderId) {
         return ctx.badRequest('orderId is required');
       }
@@ -185,7 +213,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
           liveProviderStatus = extractProviderStatus(liveProviderResponse);
           liveMappedStatus = mapPawaPayStatusToPaymentStatus(liveProviderStatus);
         } catch {
-          if (!timedOut) {
+          if (!timedOut && !forceRetry) {
             ctx.body = {
               data: {
                 payment,
@@ -242,7 +270,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
           await strapi.entityService.update('api::order.order', order.id, {
             data: { status: 'pending' },
           });
-        } else if (!phoneChanged && !timedOut) {
+        } else if (!phoneChanged && !timedOut && !forceRetry) {
           ctx.body = {
             data: {
               payment,
@@ -266,29 +294,79 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         }
       }
 
-      const newPayment = await strapi.entityService.create('api::payment.payment', {
-        data: {
-          order: order.id,
-          method: 'mobile_money',
-          provider: 'pawapay',
-          amount: totalChargeAmount,
-          currency: 'UGX',
-          status: 'pending',
-          phone_number: `+${msisdn}`,
-        },
-      });
+      const paymentRecord = payment
+        ? await strapi.entityService.update('api::payment.payment', payment.id, {
+            data: {
+              amount: totalChargeAmount,
+              currency: 'UGX',
+              status: 'pending',
+              phone_number: `+${msisdn}`,
+              transaction_id: null,
+              provider_response: null,
+              error_message: null,
+              completed_at: null,
+            },
+          })
+        : await strapi.entityService.create('api::payment.payment', {
+            data: {
+              order: order.id,
+              method: 'mobile_money',
+              provider: 'pawapay',
+              amount: totalChargeAmount,
+              currency: 'UGX',
+              status: 'pending',
+              phone_number: `+${msisdn}`,
+            },
+          });
 
       const depositId = crypto.randomUUID();
 
-      const providerResponse = await createPawaPayDeposit({
-        depositId,
-        amount: totalChargeAmount,
-        currency: String(newPayment.currency || 'UGX'),
-        phoneNumber: msisdn,
-        correspondent: resolvedCorrespondent,
-        country: country || process.env.PAWAPAY_COUNTRY || 'UGA',
-        statementDescription: `LipaCart Order ${order.order_number || order.id}`.slice(0, 22),
-      });
+      let providerResponse: any;
+      try {
+        providerResponse = await createPawaPayDeposit({
+          depositId,
+          amount: totalChargeAmount,
+          currency: String(paymentRecord.currency || 'UGX'),
+          phoneNumber: msisdn,
+          correspondent: resolvedCorrespondent,
+          country: country || process.env.PAWAPAY_COUNTRY || 'UGA',
+          statementDescription: `LipaCart Order ${order.order_number || order.id}`.slice(0, 22),
+        });
+      } catch (providerError: any) {
+        await strapi.entityService.update('api::payment.payment', paymentRecord.id, {
+          data: {
+            status: 'failed',
+            error_message:
+              providerError?.message || 'Payment provider request failed before prompt delivery',
+          },
+        });
+
+        await strapi.entityService.update('api::order.order', order.id, {
+          data: { status: 'pending' },
+        });
+
+        const wantsRollback = Boolean(rollbackOrderOnFailure);
+        if (wantsRollback) {
+          try {
+            const rolledBack = await rollbackUnpaidOrderAfterInitiationFailure(strapi, order);
+            if (rolledBack) {
+              ctx.throw(
+                502,
+                '[PAYMENT_INIT_FAILED] Payment could not be initiated. No order was created. Please retry or switch to Cash on Delivery.',
+              );
+            }
+          } catch (rollbackError) {
+            strapi.log.error('Rollback unpaid order failed:', rollbackError);
+          }
+        }
+
+        ctx.throw(
+          502,
+          `[PAYMENT_INIT_FAILED] ${
+            providerError?.message || 'Failed to initiate mobile money payment with provider'
+          }`,
+        );
+      }
 
       const providerStatus = extractProviderStatus(providerResponse);
       const mappedStatus = mapPawaPayStatusToPaymentStatus(providerStatus);
@@ -296,7 +374,7 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
 
       const updatedPayment = await strapi.entityService.update(
         'api::payment.payment',
-        newPayment.id,
+        paymentRecord.id,
         {
           data: {
             transaction_id: depositId,
@@ -338,11 +416,70 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       };
 
       if (mappedStatus === 'completed') {
-        sendPawaPayReceiptOnFirstCompletion(strapi, newPayment.status, updatedPayment.id);
+        sendPawaPayReceiptOnFirstCompletion(strapi, paymentRecord.status, updatedPayment.id);
       }
     } catch (error: any) {
       console.error('PawaPay initiateMobileMoney error:', error);
+      const statusCode = Number(error?.status || error?.statusCode || 0);
+      if (statusCode >= 400) {
+        ctx.throw(statusCode, error?.message || 'Failed to initiate mobile money payment');
+      }
       ctx.throw(500, error?.message || 'Failed to initiate mobile money payment');
+    }
+  },
+
+  /**
+   * Validate payment details without creating an order or payment.
+   * Client calls this BEFORE placing the order to handle validation errors early.
+   *
+   * Input: { phoneNumber, correspondent? }
+   * Output: { valid: true } or { valid: false, error: string }
+   */
+  async validatePaymentDetails(ctx: any) {
+    try {
+      const auth = await requireAuth(ctx, strapi);
+      if (!auth) return;
+      const { customUser } = auth;
+
+      if (!customUser || customUser.user_type !== 'customer') {
+        return ctx.forbidden('Only customers can validate payments');
+      }
+
+      if (!isPawaPayConfigured()) {
+        return ctx.badRequest('PawaPay is not configured on the server');
+      }
+
+      const { phoneNumber, correspondent } = ctx.request.body || {};
+
+      // Validate phone format
+      const msisdn = normalizeMsisdn(phoneNumber || customUser.phone || '');
+      if (!/^256\d{9}$/.test(msisdn)) {
+        return ctx.badRequest('A valid Uganda phone number is required');
+      }
+
+      // Validate correspondent matches phone prefix
+      const inferredNetwork = detectUgandaNetwork(msisdn);
+      const inferredCorrespondent = networkToPawaPayCorrespondent(inferredNetwork);
+      const requestedCorrespondent = normalizeCorrespondent(correspondent);
+
+      if (requestedCorrespondent && requestedCorrespondent !== inferredCorrespondent) {
+        return ctx.badRequest(
+          'Selected mobile money network does not match the payment phone number',
+        );
+      }
+
+      // If we got here, payment details are valid
+      ctx.body = {
+        data: {
+          valid: true,
+          msisdn,
+          correspondent: requestedCorrespondent || inferredCorrespondent,
+          network: inferredNetwork,
+        },
+      };
+    } catch (error: any) {
+      console.error('PawaPay validatePaymentDetails error:', error);
+      ctx.throw(500, error?.message || 'Failed to validate payment details');
     }
   },
 

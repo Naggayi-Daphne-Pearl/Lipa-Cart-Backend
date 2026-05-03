@@ -199,13 +199,17 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
         }
 
         if (liveMappedStatus === 'completed') {
-          const finalizedPayment = await strapi.entityService.update('api::payment.payment', payment.id, {
-            data: {
-              status: 'completed',
-              provider_response: liveProviderResponse || payment.provider_response,
-              completed_at: payment.completed_at || new Date(),
+          const finalizedPayment = await strapi.entityService.update(
+            'api::payment.payment',
+            payment.id,
+            {
+              data: {
+                status: 'completed',
+                provider_response: liveProviderResponse || payment.provider_response,
+                completed_at: payment.completed_at || new Date(),
+              },
             },
-          });
+          );
 
           await strapi.entityService.update('api::order.order', order.id, {
             data: {
@@ -290,16 +294,20 @@ export default factories.createCoreController('api::payment.payment', ({ strapi 
       const mappedStatus = mapPawaPayStatusToPaymentStatus(providerStatus);
       const providerFailureMessage = failureMessageFromPayload(providerResponse, providerStatus);
 
-      const updatedPayment = await strapi.entityService.update('api::payment.payment', newPayment.id, {
-        data: {
-          transaction_id: depositId,
-          status: mappedStatus,
-          phone_number: `+${msisdn}`,
-          provider_response: providerResponse,
-          ...(mappedStatus === 'failed' ? { error_message: providerFailureMessage } : {}),
-          ...(mappedStatus === 'completed' ? { completed_at: new Date() } : {}),
+      const updatedPayment = await strapi.entityService.update(
+        'api::payment.payment',
+        newPayment.id,
+        {
+          data: {
+            transaction_id: depositId,
+            status: mappedStatus,
+            phone_number: `+${msisdn}`,
+            provider_response: providerResponse,
+            ...(mappedStatus === 'failed' ? { error_message: providerFailureMessage } : {}),
+            ...(mappedStatus === 'completed' ? { completed_at: new Date() } : {}),
+          },
         },
-      });
+      );
 
       const orderStatusPatch: any =
         mappedStatus === 'completed'

@@ -634,9 +634,13 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
     doc.save();
     doc.roundedRect(left, y, contentWidth, height, 12).fillAndStroke('#FFFFFF', colors.line);
     doc.restore();
-    doc.font('Helvetica-Bold').fontSize(14).fillColor(colors.green).text(toPdfSafeText(title), left + cardPad, y + 14, {
-      width: contentWidth - cardPad * 2,
-    });
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(14)
+      .fillColor(colors.green)
+      .text(toPdfSafeText(title), left + cardPad, y + 14, {
+        width: contentWidth - cardPad * 2,
+      });
     const previousY = y;
     y += 40;
     render();
@@ -644,9 +648,13 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
   };
 
   const labelValue = (label: string, value: string, top: number, emphasize = false) => {
-    doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(toPdfSafeText(label), left + cardPad, top, {
-      width: 150,
-    });
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor(colors.muted)
+      .text(toPdfSafeText(label), left + cardPad, top, {
+        width: 150,
+      });
     doc
       .font(emphasize ? 'Helvetica-Bold' : 'Helvetica')
       .fontSize(emphasize ? 11 : 10.5)
@@ -659,14 +667,26 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
 
   drawPageChrome();
 
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(colors.green).text('LipaCart', left, y, { width: contentWidth / 2 });
-  doc.font('Helvetica').fontSize(9).fillColor(colors.muted).text('Reliable grocery delivery', left, y + 22, {
-    width: contentWidth / 2,
-  });
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(colors.ink).text('PAYMENT RECEIPT', left, y + 4, {
-    width: contentWidth,
-    align: 'right',
-  });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(18)
+    .fillColor(colors.green)
+    .text('LipaCart', left, y, { width: contentWidth / 2 });
+  doc
+    .font('Helvetica')
+    .fontSize(9)
+    .fillColor(colors.muted)
+    .text('Reliable grocery delivery', left, y + 22, {
+      width: contentWidth / 2,
+    });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(18)
+    .fillColor(colors.ink)
+    .text('PAYMENT RECEIPT', left, y + 4, {
+      width: contentWidth,
+      align: 'right',
+    });
   y += 52;
 
   ensureSpace(118);
@@ -674,11 +694,31 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
   doc.roundedRect(left, y, contentWidth, 118, 16).fillAndStroke(colors.greenSoft, colors.line);
   doc.restore();
   doc.circle(left + 34, y + 32, 18).fill(colors.green);
-  doc.font('Helvetica-Bold').fontSize(16).fillColor('#FFFFFF').text('PAID', left + 19, y + 26, { width: 30, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(colors.green).text('Payment Successful', left + 68, y + 18);
-  doc.font('Helvetica-Bold').fontSize(26).fillColor(colors.green).text(toPdfSafeText(data.amountPaid), left + 68, y + 42);
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(colors.ink).text(`#${toPdfSafeText(data.orderNumber)}`, left + 68, y + 78);
-  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(toPdfSafeText(data.paidAtHuman), left + 68, y + 94);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(16)
+    .fillColor('#FFFFFF')
+    .text('PAID', left + 19, y + 26, { width: 30, align: 'center' });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(15)
+    .fillColor(colors.green)
+    .text('Payment Successful', left + 68, y + 18);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(26)
+    .fillColor(colors.green)
+    .text(toPdfSafeText(data.amountPaid), left + 68, y + 42);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(12)
+    .fillColor(colors.ink)
+    .text(`#${toPdfSafeText(data.orderNumber)}`, left + 68, y + 78);
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .fillColor(colors.muted)
+    .text(toPdfSafeText(data.paidAtHuman), left + 68, y + 94);
   y += 132;
 
   sectionCard('Payment Information', 122, () => {
@@ -697,11 +737,19 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
 
   const addressHeight = Math.max(84, 60 + Math.ceil(data.deliveryAddress.length / 44) * 14);
   sectionCard('Delivery Details', addressHeight, () => {
-    doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text('Address', left + cardPad, y, { width: 120 });
-    doc.font('Helvetica').fontSize(10.5).fillColor(colors.ink).text(toPdfSafeText(data.deliveryAddress), left + 190, y, {
-      width: contentWidth - 190 - cardPad,
-      align: 'right',
-    });
+    doc
+      .font('Helvetica')
+      .fontSize(10)
+      .fillColor(colors.muted)
+      .text('Address', left + cardPad, y, { width: 120 });
+    doc
+      .font('Helvetica')
+      .fontSize(10.5)
+      .fillColor(colors.ink)
+      .text(toPdfSafeText(data.deliveryAddress), left + 190, y, {
+        width: contentWidth - 190 - cardPad,
+        align: 'right',
+      });
     labelValue('Website', FRONTEND_URL, y + 28);
   });
 
@@ -728,9 +776,13 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
         doc.rect(left + 8, rowY - 3, contentWidth - 16, 22).fill(colors.zebra);
         doc.restore();
       }
-      doc.font('Helvetica').fontSize(10).fillColor(colors.ink).text(toPdfSafeText(row.name), cols.item, rowY, {
-        width: cols.qty - cols.item - 8,
-      });
+      doc
+        .font('Helvetica')
+        .fontSize(10)
+        .fillColor(colors.ink)
+        .text(toPdfSafeText(row.name), cols.item, rowY, {
+          width: cols.qty - cols.item - 8,
+        });
       doc.text(toPdfSafeText(row.quantity), cols.qty, rowY, { width: 34, align: 'center' });
       doc.text(toPdfSafeText(row.unitPrice), cols.unit, rowY, { width: 62, align: 'right' });
       doc.text(toPdfSafeText(row.subtotal), cols.subtotal, rowY, { width: 58, align: 'right' });
@@ -744,7 +796,11 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
     data.summaryRows.forEach((row, index) => {
       if (row.strong && index > 0) {
         doc.save();
-        doc.moveTo(left + cardPad, rowY - 6).lineTo(right - cardPad, rowY - 6).strokeColor(colors.line).stroke();
+        doc
+          .moveTo(left + cardPad, rowY - 6)
+          .lineTo(right - cardPad, rowY - 6)
+          .strokeColor(colors.line)
+          .stroke();
         doc.restore();
       }
       labelValue(row.label, row.value, rowY, row.strong);
@@ -756,26 +812,51 @@ async function buildStyledPaymentReceiptPdf(data: PaymentReceiptPdfData): Promis
   doc.save();
   doc.roundedRect(left, y, contentWidth, 86, 12).fillAndStroke(colors.soft, colors.line);
   doc.restore();
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(colors.ink).text('Thank you for shopping with LipaCart!', left + cardPad, y + 16);
-  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(
-    'This is an official receipt. Please retain it for your records.',
-    left + cardPad,
-    y + 36,
-    { width: contentWidth - cardPad * 2 },
-  );
-  doc.font('Helvetica').fontSize(10).fillColor(colors.muted).text(`Support: ${toPdfSafeText(SUPPORT_EMAIL)} | ${toPdfSafeText(FRONTEND_URL)}`, left + cardPad, y + 56, {
-    width: contentWidth - cardPad * 2,
-  });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(12)
+    .fillColor(colors.ink)
+    .text('Thank you for shopping with LipaCart!', left + cardPad, y + 16);
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .fillColor(colors.muted)
+    .text(
+      'This is an official receipt. Please retain it for your records.',
+      left + cardPad,
+      y + 36,
+      { width: contentWidth - cardPad * 2 },
+    );
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .fillColor(colors.muted)
+    .text(
+      `Support: ${toPdfSafeText(SUPPORT_EMAIL)} | ${toPdfSafeText(FRONTEND_URL)}`,
+      left + cardPad,
+      y + 56,
+      {
+        width: contentWidth - cardPad * 2,
+      },
+    );
 
   const pageRange = doc.bufferedPageRange();
-  for (let pageIndex = pageRange.start; pageIndex < pageRange.start + pageRange.count; pageIndex++) {
+  for (
+    let pageIndex = pageRange.start;
+    pageIndex < pageRange.start + pageRange.count;
+    pageIndex++
+  ) {
     doc.switchToPage(pageIndex);
-    doc.font('Helvetica').fontSize(9).fillColor(colors.muted).text(
-      `Page ${pageIndex - pageRange.start + 1} of ${pageRange.count}`,
-      left,
-      pageHeight - 36,
-      { width: contentWidth, align: 'right' },
-    );
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(colors.muted)
+      .text(
+        `Page ${pageIndex - pageRange.start + 1} of ${pageRange.count}`,
+        left,
+        pageHeight - 36,
+        { width: contentWidth, align: 'right' },
+      );
   }
 
   doc.end();
@@ -1160,7 +1241,11 @@ export async function sendPawaPayPaymentReceiptEmail(
         rows: [
           { label: 'Transaction ID', value: transactionId },
           { label: 'Paid On', value: paidAtHuman },
-          { label: 'Amount Paid', value: formatCurrency(total, paymentCurrency), accent: 'primary' },
+          {
+            label: 'Amount Paid',
+            value: formatCurrency(total, paymentCurrency),
+            accent: 'primary',
+          },
           { label: 'Payment Method', value: 'PawaPay' },
           { label: 'Merchant', value: 'LipaCart' },
           { label: 'Customer', value: customerName },
@@ -1214,7 +1299,9 @@ export async function sendPawaPayPaymentReceiptEmail(
         ? [`PawaPay Charge: ${formatCurrency(pawaPayCharge, paymentCurrency)}`]
         : []),
       `Total Paid: ${formatCurrency(total, paymentCurrency)}`,
-      ...(itemRows.length > 0 ? ['', 'Items:', ...itemRows.map((row) => `${row.label} - ${row.value}`)] : []),
+      ...(itemRows.length > 0
+        ? ['', 'Items:', ...itemRows.map((row) => `${row.label} - ${row.value}`)]
+        : []),
     ];
     const summaryRows = [
       { label: 'Subtotal', value: formatCurrency(subtotal, paymentCurrency) },

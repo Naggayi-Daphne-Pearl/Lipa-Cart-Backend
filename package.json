@@ -41,7 +41,7 @@
     "firebase-admin": "^13.8.0",
     "fs-extra": "^10.0.0",
     "mime-types": "^2.1.27",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^8.0.7",
     "pdfkit": "^0.18.0",
     "pg": "^8.20.0",
     "react": "^18.0.0",
